@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import Button from '../ui/Button.vue'
 import { useTheme } from '../../composables/useTheme'
 import {
   PersonOutline,
   NotificationsOutline,
-  SearchOutline,
   MenuOutline,
-  ChevronDown,
-  CloseOutline,
   SunnyOutline,
-  MoonOutline
+  MoonOutline,
+  CheckmarkDoneOutline
 } from '@vicons/ionicons5'
 
 
@@ -23,8 +22,39 @@ const emit = defineEmits<{
   toggleSidebar: () => void
 }>()
 
+const router = useRouter()
 const authStore = useAuthStore()
 const { isDark, toggleTheme } = useTheme()
+
+// Estado das notificações
+const showNotifications = ref(false)
+const notifications = ref([
+  {
+    id: 1,
+    title: 'Novo pedido criado',
+    message: 'Pedido #1234 foi criado com sucesso',
+    time: '2 min atrás',
+    read: false
+  },
+  {
+    id: 2,
+    title: 'Cliente atualizado',
+    message: 'Dados do cliente João Silva foram atualizados',
+    time: '15 min atrás',
+    read: false
+  },
+  {
+    id: 3,
+    title: 'Estoque baixo',
+    message: 'Produto "Camiseta Básica" está com estoque baixo',
+    time: '1 hora atrás',
+    read: true
+  }
+])
+
+const unreadNotifications = computed(() =>
+  notifications.value.filter(n => !n.read).length
+)
 
 const userInitials = computed(() => {
   if (!authStore.user) return 'U'
@@ -35,6 +65,26 @@ const userInitials = computed(() => {
 const userDisplayName = computed(() => {
   return authStore.user?.name || authStore.user?.username || 'Usuário'
 })
+
+// Functions
+const toggleNotifications = () => {
+  showNotifications.value = !showNotifications.value
+}
+
+const markAsRead = (notificationId) => {
+  const notification = notifications.value.find(n => n.id === notificationId)
+  if (notification) {
+    notification.read = true
+  }
+}
+
+const markAllAsRead = () => {
+  notifications.value.forEach(n => n.read = true)
+}
+
+const goToProfile = () => {
+  router.push('/perfil')
+}
 
 // Animation state for header entrance
 const headerAnimated = ref(false)
@@ -71,21 +121,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Center Section - Search -->
-      <div class="header-center">
-        <div class="search-container">
-          <div class="search-icon-wrapper">
-            <SearchOutline class="search-icon" />
-          </div>
-          <input
-            type="text"
-            placeholder="Buscar clientes, pedidos, produtos..."
-            class="search-input"
-            aria-label="Campo de busca"
-            role="searchbox"
-          />
-        </div>
-      </div>
+
 
       <!-- Right Section -->
       <div class="header-right">
@@ -100,35 +136,75 @@ onMounted(() => {
           <component :is="isDark ? SunnyOutline : MoonOutline" />
         </Button>
 
-        <!-- Notifications -->
-        <Button
-          variant="ghost"
-          size="sm"
-          class="notifications-btn header-btn"
-          aria-label="Notificações"
-          :aria-describedby="'notification-count'"
-        >
-          <NotificationsOutline />
-          <span class="notification-badge" id="notification-count" aria-label="3 notificações não lidas">3</span>
-        </Button>
-
-        <!-- User Menu -->
-        <div class="user-menu">
+        <!-- Notifications Dropdown -->
+        <div class="notifications-dropdown">
           <Button
             variant="ghost"
             size="sm"
-            class="user-btn header-btn"
-            :aria-label="'Menu do usuário ' + userDisplayName"
+            @click="toggleNotifications"
+            class="notifications-btn header-btn"
+            :aria-label="'Notificações - ' + unreadNotifications + ' não lidas'"
             aria-haspopup="menu"
-            aria-expanded="false"
+            :aria-expanded="showNotifications"
           >
-            <div class="user-avatar">
-              <span class="user-initials">{{ userInitials }}</span>
-            </div>
-            <span class="user-name">{{ userDisplayName }}</span>
-            <ChevronDown class="dropdown-icon" />
+            <NotificationsOutline />
+            <span v-if="unreadNotifications > 0" class="notification-badge">
+              {{ unreadNotifications > 9 ? '9+' : unreadNotifications }}
+            </span>
           </Button>
+
+          <!-- Notifications Panel -->
+          <div v-if="showNotifications" class="notifications-panel">
+            <div class="notifications-header">
+              <h3 class="notifications-title">Notificações</h3>
+              <Button
+                v-if="unreadNotifications > 0"
+                variant="ghost"
+                size="sm"
+                @click="markAllAsRead"
+                class="mark-all-read-btn"
+              >
+                <CheckmarkDoneOutline />
+                Marcar todas como lidas
+              </Button>
+            </div>
+
+            <div class="notifications-list">
+              <div
+                v-for="notification in notifications"
+                :key="notification.id"
+                :class="['notification-item', { 'notification-unread': !notification.read }]"
+                @click="markAsRead(notification.id)"
+              >
+                <div class="notification-content">
+                  <h4 class="notification-title">{{ notification.title }}</h4>
+                  <p class="notification-message">{{ notification.message }}</p>
+                  <span class="notification-time">{{ notification.time }}</span>
+                </div>
+                <div v-if="!notification.read" class="notification-dot"></div>
+              </div>
+
+              <div v-if="notifications.length === 0" class="no-notifications">
+                <NotificationsOutline class="no-notifications-icon" />
+                <p>Nenhuma notificação</p>
+              </div>
+            </div>
+          </div>
         </div>
+
+        <!-- User Menu -->
+        <Button
+          variant="ghost"
+          size="sm"
+          @click="goToProfile"
+          class="user-btn header-btn"
+          :aria-label="'Ir para perfil do usuário ' + userDisplayName"
+        >
+          <div class="user-avatar">
+            <span class="user-initials">{{ userInitials }}</span>
+          </div>
+          <span class="user-name">{{ userDisplayName }}</span>
+        </Button>
       </div>
     </div>
   </header>
@@ -162,9 +238,10 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-4) var(--space-6);
+  padding: var(--space-3) var(--space-6);
   max-width: 100%;
   margin: 0 auto;
+  min-height: 64px;
 }
 
 .header-left {
@@ -216,59 +293,13 @@ onMounted(() => {
   font-weight: var(--font-medium);
 }
 
-.header-center {
-  flex: 1;
-  max-width: 500px;
-  margin: 0 var(--space-8);
-}
 
-.search-container {
-  position: relative;
-  width: 100%;
-  display: flex;
-  align-items: center;
-}
-
-.search-icon-wrapper {
-  position: absolute;
-  left: var(--space-3);
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  color: var(--gray-500);
-  transition: color var(--transition-fast);
-}
-
-.search-input {
-  width: 100%;
-  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-11);
-  border: 1px solid var(--gray-300);
-  border-radius: var(--radius-lg);
-  background-color: var(--gray-25);
-  font-size: var(--text-sm);
-  transition: all var(--transition-fast);
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: var(--primary-500);
-  background-color: white;
-  box-shadow: 0 0 0 3px var(--primary-100);
-}
-
-.search-input:focus + .search-icon-wrapper {
-  color: var(--primary-600);
-}
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  min-width: 180px;
+  gap: var(--space-2);
+  min-width: 140px;
   justify-content: flex-end;
 }
 
@@ -335,20 +366,189 @@ onMounted(() => {
   transition: transform var(--transition-fast);
 }
 
-.user-btn:hover .dropdown-icon {
-  transform: rotate(180deg);
+/* Notifications Dropdown */
+.notifications-dropdown {
+  position: relative;
+}
+
+.notifications-panel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  width: 380px;
+  max-width: calc(100vw - var(--space-4));
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  z-index: var(--z-dropdown);
+  overflow: hidden;
+}
+
+[data-theme="dark"] .notifications-panel {
+  background: var(--gray-800);
+  border-color: var(--gray-700);
+}
+
+.notifications-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+[data-theme="dark"] .notifications-header {
+  border-bottom-color: var(--gray-700);
+}
+
+.notifications-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--gray-900);
+  margin: 0;
+}
+
+[data-theme="dark"] .notifications-title {
+  color: var(--gray-100);
+}
+
+.mark-all-read-btn {
+  color: var(--primary-600);
+  font-size: var(--text-sm);
+}
+
+.mark-all-read-btn:hover {
+  background: var(--primary-50);
+}
+
+[data-theme="dark"] .mark-all-read-btn {
+  color: var(--primary-400);
+}
+
+[data-theme="dark"] .mark-all-read-btn:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.notifications-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--gray-100);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.notification-item:hover {
+  background: var(--gray-100);
+}
+
+[data-theme="dark"] .notification-item {
+  border-bottom-color: var(--gray-700);
+}
+
+[data-theme="dark"] .notification-item:hover {
+  background: var(--gray-700);
+}
+
+.notification-item:last-child {
+  border-bottom: none;
+}
+
+.notification-unread {
+  background: var(--primary-50);
+}
+
+[data-theme="dark"] .notification-unread {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.notification-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--gray-900);
+  margin: 0 0 var(--space-1) 0;
+  line-height: 1.4;
+}
+
+[data-theme="dark"] .notification-title {
+  color: var(--gray-100);
+}
+
+.notification-message {
+  font-size: var(--text-sm);
+  color: var(--gray-600);
+  margin: 0 0 var(--space-1) 0;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+[data-theme="dark"] .notification-message {
+  color: var(--gray-300);
+}
+
+.notification-time {
+  font-size: var(--text-xs);
+  color: var(--gray-500);
+  font-weight: var(--font-medium);
+}
+
+[data-theme="dark"] .notification-time {
+  color: var(--gray-400);
+}
+
+.notification-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--primary-500);
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: var(--space-2);
+}
+
+.no-notifications {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  color: var(--gray-500);
+  text-align: center;
+}
+
+.no-notifications-icon {
+  font-size: 48px;
+  margin-bottom: var(--space-3);
+  opacity: 0.5;
+}
+
+[data-theme="dark"] .no-notifications {
+  color: var(--gray-400);
 }
 
 .header-btn {
-  width: 44px;
-  height: 44px;
-  padding: 0.625rem;
+  width: 40px;
+  height: 40px;
+  padding: 0.5rem;
+  border-radius: var(--radius-lg);
 }
 
 /* Responsive Design */
 @media (max-width: var(--bp-tablet)) {
-  .header-center {
-    display: none;
+  .header-content {
+    padding: var(--space-3) var(--space-4);
+    min-height: 56px;
   }
 
   .sidebar-toggle {
@@ -360,7 +560,7 @@ onMounted(() => {
   }
 
   .header-right {
-    gap: var(--space-2);
+    gap: var(--space-1);
     min-width: auto;
   }
 
@@ -374,8 +574,9 @@ onMounted(() => {
   }
 
   .header-btn {
-    width: 44px;
-    height: 44px;
+    width: 36px;
+    height: 36px;
+    padding: 0.375rem;
   }
 
   .header-btn :deep(.n-icon) {
@@ -385,15 +586,55 @@ onMounted(() => {
   .sidebar-toggle :deep(.n-icon) {
     font-size: var(--icon-size-desktop) !important;
   }
+
+  /* Ajustar painel de notificações para mobile */
+  .notifications-panel {
+    width: calc(100vw - var(--space-4));
+    right: calc(-1 * var(--space-2));
+  }
 }
 
 @media (max-width: var(--bp-small)) {
+  .header-content {
+    padding: var(--space-2) var(--space-3);
+    min-height: 48px;
+  }
+
+  .header-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0.25rem;
+  }
+
   .header-btn :deep(.n-icon) {
     font-size: var(--icon-size-small) !important;
   }
 
   .sidebar-toggle :deep(.n-icon) {
     font-size: var(--icon-size-mobile) !important;
+  }
+
+  .brand-logo {
+    width: 32px;
+    height: 32px;
+  }
+
+  .logo-icon {
+    font-size: 14px;
+  }
+
+  .user-avatar {
+    width: 28px;
+    height: 28px;
+  }
+
+  .user-initials {
+    font-size: 10px;
+  }
+
+  .notifications-panel {
+    width: calc(100vw - var(--space-2));
+    right: calc(-1 * var(--space-1));
   }
 }
 
