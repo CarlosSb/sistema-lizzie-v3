@@ -229,37 +229,33 @@ const pedidosStatusChart = computed(() => {
         <h1 class="page-title">Dashboard</h1>
         <p class="page-subtitle">Visão geral do sistema</p>
       </div>
-      <NSpace>
-        <NButton @click="loadDashboard">
-          <template #icon><NIcon><RefreshOutline /></NIcon>
-          </template>
+      <div class="header-actions">
+        <NButton @click="loadDashboard" :loading="loading">
+          <template #icon><NIcon><RefreshOutline /></NIcon></template>
           Atualizar
         </NButton>
         <NButton type="primary" @click="router.push('/pedidos')">
-          <template #icon><NIcon><AddOutline /></NIcon>
-          </template>
+          <template #icon><NIcon><AddOutline /></NIcon></template>
           Novo Pedido
         </NButton>
-      </NSpace>
+      </div>
     </div>
 
     <!-- Skeleton Loading -->
     <template v-if="loading">
-      <NGrid :x-gap="20" :y-gap="20" cols="s:1 m:2 l:4" responsive="screen">
-        <NGi v-for="i in 4" :key="i">
-          <NCard>
-            <NSkeleton :animated="true" />
-            <NSkeleton :animated="true" />
-            <NSkeleton :animated="true" />
-          </NCard>
-        </NGi>
-      </NGrid>
+      <div class="skeleton-grid">
+        <NCard v-for="i in 4" :key="i" class="stat-card">
+          <NSkeleton :animated="true" />
+          <NSkeleton :animated="true" />
+          <NSkeleton :animated="true" />
+        </NCard>
+      </div>
     </template>
 
     <!-- Real Content -->
     <template v-else>
       <!-- Linha 1 - Métricas principais -->
-      <div class="flex flex-wrap gap-4 mb-4">
+      <div class="stats-grid">
         <div class="flex-1 min-w-[200px]">
           <NCard hoverable class="stat-card">
             <NStatistic label="Clientes Ativos" :value="dashboard?.clientes?.ativos || 0">
@@ -321,9 +317,9 @@ const pedidosStatusChart = computed(() => {
         </NCard>
       </div>
 
-      <!-- Linha 3 - Top Produtos + Pedidos por Status -->
-      <div class="flex flex-wrap gap-4 mb-4">
-        <div v-if="authStore.isAdmin && dashboard?.graficos?.top_produtos?.length > 0" class="flex-[2] min-w-[400px]">
+      <!-- Linha 3 - Gráficos -->
+      <div v-if="authStore.isAdmin" class="charts-grid">
+        <div v-if="dashboard?.graficos?.top_produtos?.length > 0">
           <NCard title="Top Produtos" class="top-produtos-card">
             <div class="chart-container">
               <apexchart v-if="topProdutosChart" type="bar" height="300" :options="topProdutosChart.options" :series="topProdutosChart.series" />
@@ -340,18 +336,18 @@ const pedidosStatusChart = computed(() => {
           </NCard>
         </div>
 
-        <div class="flex-1 min-w-[300px]">
-          <NCard title="Pedidos por Status">
+        <div>
+          <NCard title="Pedidos por Status" class="top-produtos-card">
             <apexchart v-if="pedidosStatusChart" type="donut" height="300" :options="pedidosStatusChart.options" :series="pedidosStatusChart.series" />
           </NCard>
         </div>
       </div>
 
       <!-- Linha 4 - Vendas por Vendedor -->
-      <div class="flex flex-wrap gap-4">
-        <div v-if="authStore.isAdmin && dashboard?.graficos?.vendas_por_vendedor?.length > 0" class="flex-[3] min-w-[500px]">
+      <div v-if="authStore.isAdmin && dashboard?.graficos?.vendas_por_vendedor?.length > 0" class="charts-grid">
+        <div class="charts-grid-full">
           <NCard title="Vendas por Vendedor" class="vendas-vendedor-card">
-            <div class="flex gap-2 mb-4">
+            <div class="flex flex-wrap gap-2 mb-4">
               <NButton size="small" :type="scaleMode === 'all' ? 'primary' : 'default'" @click="setScaleMode('all')">
                 Todos
               </NButton>
@@ -376,8 +372,22 @@ const pedidosStatusChart = computed(() => {
 
 <style scoped>
 .dashboard-container {
+  width: 100%;
   max-width: 1400px;
   margin: 0 auto;
+  padding: 0 var(--space-4);
+}
+
+@media (max-width: var(--bp-tablet)) {
+  .dashboard-container {
+    padding: 0 var(--space-2);
+  }
+}
+
+@media (max-width: var(--bp-mobile)) {
+  .dashboard-container {
+    padding: 0;
+  }
 }
 
 .vendas-vendedor-card :deep(.apexcharts-toolbar) {
@@ -388,42 +398,157 @@ const pedidosStatusChart = computed(() => {
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
+  align-items: flex-start;
+  margin-bottom: var(--space-6);
+  gap: var(--space-4);
+}
+
+@media (max-width: var(--bp-tablet)) {
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
 }
 
 .page-title {
-  font-size: 28px;
-  font-weight: 700;
-  color: #0f172a;
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  color: var(--gray-900);
+  margin: 0;
+  line-height: 1.2;
+}
+
+[data-theme="dark"] .page-title {
+  color: var(--gray-100);
 }
 
 .page-subtitle {
-  font-size: 14px;
-  color: #64748b;
-  margin-top: 4px;
+  font-size: var(--text-sm);
+  color: var(--gray-500);
+  margin: var(--space-1) 0 0 0;
+  font-weight: var(--font-medium);
+}
+
+[data-theme="dark"] .page-subtitle {
+  color: var(--gray-400);
 }
 
 .stat-card {
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: all var(--transition-fast);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--gray-200);
+  background: var(--gray-50);
+}
+
+[data-theme="dark"] .stat-card {
+  background: var(--gray-800);
+  border-color: var(--gray-700);
 }
 
 .stat-card:hover {
   transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
 }
 
 .stat-meta {
-  margin-top: 8px;
-  font-size: 13px;
-  color: #64748b;
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--gray-500);
+  font-weight: var(--font-medium);
+}
+
+[data-theme="dark"] .stat-meta {
+  color: var(--gray-400);
 }
 
 .top-produtos-card {
   min-height: 400px;
+  border-radius: var(--radius-xl);
 }
 
 .chart-container {
   width: 100%;
   min-height: 320px;
+  border-radius: var(--radius-lg);
+}
+
+/* Grid responsivo para estatísticas */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+@media (max-width: var(--bp-tablet)) {
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--space-3);
+  }
+}
+
+@media (max-width: var(--bp-mobile)) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+}
+
+/* Charts responsivos */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-6);
+  margin-bottom: var(--space-6);
+}
+
+@media (max-width: var(--bp-tablet)) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .charts-grid-full {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Ações do header responsivas */
+.header-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+@media (max-width: var(--bp-mobile)) {
+  .header-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .header-actions :deep(.n-button) {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Loading skeleton responsivo */
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: var(--bp-tablet)) {
+  .skeleton-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+}
+
+@media (max-width: var(--bp-mobile)) {
+  .skeleton-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
