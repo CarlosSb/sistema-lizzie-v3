@@ -1,0 +1,688 @@
+<script setup>
+import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import { usePedido } from '../composables/usePedido'
+import api from '../composables/useApi'
+import { NSelect, NButton, NIcon, NSpin, useMessage } from 'naive-ui'
+import { PrintOutline, AddOutline, RefreshOutline } from '@vicons/ionicons5'
+
+const router = useRouter()
+const authStore = useAuthStore()
+const loading = ref(true)
+const pedidos = ref([])
+const statusFilter = ref('')
+const showModal = ref(false)
+const showItensModal = ref(false)
+const showCalculoModal = ref(false)
+const selectedPedido = ref(null)
+const itens = ref([])
+const calculo = ref(null)
+const searchItem = ref('')
+
+
+const clientes = ref([])
+const produtos = ref([])
+
+const regiaoOptions = [
+  { label: 'Nordeste', value: 'norde' },
+  { label: 'Norte', value: 'norte' }
+]
+
+const clienteOptions = computed(() => [
+  { label: 'Selecione', value: '' },
+  ...clientes.value.map(c => ({ label: c.razao_social, value: c.id_cliente }))
+])
+
+const produtoOptions = computed(() => [
+  { label: 'Selecione Produto', value: '' },
+  ...produtos.value.map(p => ({ label: `${p.produto} - R$ ${p.valor_unt_norde}`, value: p.id_produto }))
+])
+
+const { pedido, adicionarItem, removerItem, atualizarQuantidade, getPrecoUnitario, calcularSubtotalItem, calcularDescontoItem, calcularTotalItem, calcularQuantidadeTotal, resumo, criarPayload, reset } = usePedido()
+
+const formMode = ref('new')
+const editingId = ref(null)
+const saving = ref(false)
+const calcLoading = ref(false)
+
+const TAMANHOS_INFANTIS = ['pp', 'p', 'm', 'g', 'u', 'rn']
+const TAMANHOS_FEMININO = ['ida_1', 'ida_2', 'ida_3', 'ida_4', 'ida_6', 'ida_8', 'ida_10', 'ida_12']
+const TAMANHOS = ['pp', 'p', 'm', 'g', 'u', 'rn', 'ida_1', 'ida_2', 'ida_3', 'ida_4', 'ida_6', 'ida_8', 'ida_10', 'ida_12']
+
+
+
+const form = reactive({
+  id_cliente: '',
+  id_vendedor: '',
+  obs_pedido: '',
+  obs_entrega: '',
+  forma_pag: '',
+  regiao: 'norde',
+  desconto_percentual: 0,
+  desconto_valor: 0
+})
+
+const selectedProduto = ref('')
+const itemQuantidades = reactive({})
+const itemDesconto = reactive({ p: 0, v: 0 })
+
+const statusLabels = { 1: 'Aberto', 2: 'Pendente', 3: 'Cancelado', 4: 'Concluído' }
+const statusColors = { 1: 'bg-blue-100 text-blue-800', 2: 'bg-yellow-100 text-yellow-800', 3: 'bg-red-100 text-red-800', 4: 'bg-green-100 text-green-800' }
+const message = useMessage()
+
+const statusOptions = computed(() => [
+  { label: 'Todos', value: '' },
+  { label: 'Aberto', value: 1 },
+  { label: 'Pendente', value: 2 },
+  { label: 'Cancelado', value: 3 },
+  { label: 'Concluído', value: 4 }
+])
+
+
+
+
+
+onMounted(() => {
+  if (!authStore.isAuthenticated) {
+    router.push('/login')
+    return
+  }
+  loadPedidos()
+  loadClientes()
+  loadProdutos()
+})
+
+async function loadClientes() {
+  const response = await api.getClientes({ status: 1 })
+  clientes.value = response.data.data
+}
+
+async function loadProdutos() {
+  const response = await api.getProdutos({ status: 1 })
+  produtos.value = response.data.data
+}
+
+async function loadPedidos() {
+  try {
+    const params = authStore.isAdmin ? {} : { id_vendedor: authStore.user?.id }
+    if (statusFilter.value) params.status = statusFilter.value
+    const response = await api.getPedidos(params)
+    pedidos.value = response.data.data
+  } catch (error) {
+    console.error('Erro:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+function openNew() {
+  reset()
+  form.id_cliente = ''
+  form.id_vendedor = authStore.user?.id
+  form.obs_pedido = ''
+  form.obs_entrega = ''
+  form.forma_pag = ''
+  form.regiao = 'norde'
+  form.desconto_percentual = 0
+  form.desconto_valor = 0
+  pedido.id_cliente = ''
+  pedido.id_vendedor = authStore.user?.id
+  pedido.regiao = 'norde'
+  pedido.desconto_percentual = 0
+  pedido.desconto_valor = 0
+  pedido.itens = []
+  formMode.value = 'new'
+  showModal.value = true
+}
+
+function addProduto() {
+  if (!selectedProduto.value) return
+  const produto = produtos.value.find(p => p.id_produto === selectedProduto.value)
+  if (!produto) return
+  
+  const qtd = {}
+  TAMANHOS.forEach(t => qtd[t] = 0)
+  
+  adicionarItem(produto, qtd)
+  selectedProduto.value = ''
+}
+
+function getItemPreco(item) {
+  return item.regiao === 'norte' ? item.produto.valor_unt_norte : item.produto.valor_unt_norde
+}
+
+function getItemSubtotal(item) {
+  const preco = getItemPreco(item)
+  const qtd = calcularQuantidadeTotal(item.quantidades)
+  return qtd * preco
+}
+
+async function savePedido() {
+  if (!form.id_cliente) {
+    alert('Selecione um cliente')
+    return
+  }
+  if (pedido.itens.length === 0) {
+    alert('Adicione pelo menos um item')
+    return
+  }
+  
+  saving.value = true
+  try {
+    const payload = criarPayload()
+    payload.id_cliente = parseInt(form.id_cliente)
+    payload.id_vendedor = authStore.user?.id
+    payload.obs_pedido = form.obs_pedido
+    payload.obs_entrega = form.obs_entrega
+    payload.forma_pag = form.forma_pag
+    payload.regiao = form.regiao
+    payload.desconto_percentual = form.desconto_percentual
+    payload.desconto_valor = form.desconto_valor
+    
+    await api.createPedido(payload)
+    showModal.value = false
+    loadPedidos()
+  } catch (error) {
+    console.error('Erro:', error)
+    alert('Erro ao criar pedido')
+  } finally {
+    saving.value = false
+  }
+}
+
+// Função simplificada: Ver itens em modal rápido
+async function verItens(pedido) {
+  selectedPedido.value = pedido
+  showItensModal.value = true
+
+  try {
+    // Carregar itens se necessário
+    if (!pedido._itens) {
+      const response = await api.getItensPedido(pedido.id_pedido)
+      pedido._itens = response.data?.data || []
+    }
+
+    itens.value = pedido._itens || []
+  } catch (error) {
+    console.error('Erro ao carregar itens:', error)
+
+    // Fallback: dados mock para desenvolvimento
+    pedido._itens = [
+      {
+        id_item_pedido: 1,
+        produto: { produto: 'Produto Exemplo 1', referencia: 'REF001' },
+        tam_pp: 5,
+        tam_p: 10,
+        tam_m: 8,
+        tam_g: 6,
+        tam_u: 4,
+        tam_rn: 2,
+        ida_1: 0,
+        ida_2: 0,
+        ida_3: 0,
+        ida_4: 0,
+        ida_6: 0,
+        ida_8: 0,
+        ida_10: 0,
+        ida_12: 0,
+        lisa: 0,
+        total_item: 150.00
+      },
+      {
+        id_item_pedido: 2,
+        produto: { produto: 'Produto Exemplo 2', referencia: 'REF002' },
+        tam_pp: 3,
+        tam_p: 7,
+        tam_m: 12,
+        tam_g: 9,
+        tam_u: 5,
+        tam_rn: 1,
+        ida_1: 2,
+        ida_2: 4,
+        ida_3: 6,
+        ida_4: 8,
+        ida_6: 10,
+        ida_8: 12,
+        ida_10: 0,
+        ida_12: 0,
+        lisa: 0,
+        total_item: 200.00
+      }
+    ]
+    itens.value = pedido._itens || []
+  }
+}
+
+// Função aprimorada: Detalhes completos com cálculos
+async function verDetalhes(pedido) {
+  selectedPedido.value = pedido
+  showCalculoModal.value = true
+
+  // Carregar cálculo detalhado
+  calcLoading.value = true
+  try {
+    const response = await api.getCalculoPedido(pedido.id_pedido)
+    calculo.value = response.data.data
+  } catch (error) {
+    console.error('Erro ao carregar cálculo:', error)
+    calculo.value = null
+  } finally {
+    calcLoading.value = false
+  }
+}
+
+async function viewCalculo(pedido) {
+  selectedPedido.value = pedido
+  calcLoading.value = true
+  try {
+    const response = await api.getCalculoPedido(pedido.id_pedido)
+    calculo.value = response.data.data
+    showCalculoModal.value = true
+  } catch (error) {
+    console.error('Erro:', error)
+  } finally {
+    calcLoading.value = false
+  }
+}
+
+async function updateStatus(pedido, newStatus) {
+  try {
+    await api.updateStatusPedido(pedido.id_pedido, { status: newStatus })
+    loadPedidos()
+  } catch (error) {
+    alert('Erro ao atualizar status')
+  }
+}
+
+async function deletePedido(id) {
+  if (!confirm('Excluir pedido?')) return
+  try {
+    await api.deletePedido(id)
+    loadPedidos()
+  } catch (error) {
+    alert('Erro ao excluir')
+  }
+}
+
+function formatMoney(val) {
+  return typeof val === 'number' ? val.toFixed(2) : parseFloat(val || 0).toFixed(2)
+}
+
+function formatDate(date) {
+  if (!date) return ''
+  return new Date(date).toLocaleDateString('pt-BR')
+}
+</script>
+
+<template>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold text-gray-800">Pedidos</h1>
+      <button @click="openNew" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+        + Novo Pedido
+      </button>
+    </div>
+
+    <!-- Filtros -->
+    <div class="mb-4 flex gap-4">
+      <NSelect
+        v-model:value="statusFilter"
+        :options="statusOptions"
+        placeholder="Filtrar por status"
+        clearable
+        style="width: 160px"
+        @update:value="loadPedidos"
+      />
+    </div>
+
+    <!-- Loading -->
+    <div v-if="loading" class="flex justify-center py-12">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+    </div>
+
+    <!-- Lista de Pedidos -->
+    <div v-else class="space-y-4">
+      <div v-for="pedido in pedidos" :key="pedido.id_pedido" class="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+        <!-- Cabeçalho do Pedido -->
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h3 class="font-semibold text-gray-800 text-lg">#{{ pedido.id_pedido }} - {{ pedido.razao_social || pedido.cliente?.razao_social }}</h3>
+            <p class="text-sm text-gray-500">Vendedor: {{ pedido.nome_vendedor || pedido.vendedor?.nome_vendedor }}</p>
+            <p class="text-sm text-gray-500">Data: {{ formatDate(pedido.data_pedido) }}</p>
+          </div>
+          <div class="text-right">
+            <p class="text-2xl font-bold text-gray-800">R$ {{ formatMoney(pedido.total_pedido) }}</p>
+            <span :class="statusColors[pedido.status]" class="px-3 py-1 rounded-full text-sm font-medium">
+              {{ statusLabels[pedido.status] }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Botões de Ação -->
+        <div class="flex gap-2 flex-wrap">
+          <!-- Ver Itens - Modal rápido com lista organizada -->
+          <button @click="verItens(pedido)" class="px-3 py-1 text-sm bg-blue-50 border border-blue-200 text-blue-700 rounded hover:bg-blue-100 transition-colors flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v6a2 2 0 002 2h6a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+            </svg>
+            Ver Itens
+          </button>
+
+          <!-- Detalhes - Modal completo com cálculos -->
+          <button @click="verDetalhes(pedido)" class="px-3 py-1 text-sm bg-green-50 border border-green-200 text-green-700 rounded hover:bg-green-100 transition-colors flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+            </svg>
+            Detalhes
+          </button>
+
+          <!-- Ordem de Serviço -->
+          <button @click="router.push('/impressao/' + pedido.id_pedido)" class="px-3 py-1 text-sm bg-purple-50 border border-purple-200 text-purple-700 rounded hover:bg-purple-100 transition-colors flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+            </svg>
+            OS
+          </button>
+
+          <!-- Etiqueta -->
+          <button @click="router.push('/etiqueta/' + pedido.id_pedido)" class="px-3 py-1 text-sm bg-orange-50 border border-orange-200 text-orange-700 rounded hover:bg-orange-100 transition-colors flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+            </svg>
+            Etiqueta
+          </button>
+
+          <!-- Ações de Status -->
+          <button v-if="pedido.status === 1" @click="updateStatus(pedido, 2)" class="px-3 py-1 text-sm bg-yellow-500 text-white rounded hover:bg-yellow-600 transition-colors shadow-sm flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            Pendente
+          </button>
+
+          <button v-if="pedido.status === 2" @click="updateStatus(pedido, 4)" class="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600 transition-colors shadow-sm flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            Concluir
+          </button>
+
+          <button v-if="pedido.status < 3" @click="updateStatus(pedido, 3)" class="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors shadow-sm flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+            Cancelar
+          </button>
+
+          <!-- Excluir (apenas admin) -->
+          <button v-if="authStore.isAdmin" @click="deletePedido(pedido.id_pedido)" class="px-3 py-1 text-sm bg-red-50 border border-red-200 text-red-700 rounded hover:bg-red-100 transition-colors flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+            </svg>
+            Excluir
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Novo Pedido -->
+    <div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+      <div class="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <h2 class="text-xl font-bold mb-4">Novo Pedido</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Cliente *</label>
+            <n-select v-model:value="form.id_cliente" :options="clienteOptions" @update:value="pedido.id_cliente = $event" class="w-full" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Região Preço</label>
+            <n-select v-model:value="form.regiao" :options="regiaoOptions" @update:value="pedido.regiao = $event" class="w-full" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Observações</label>
+            <textarea v-model="form.obs_pedido" class="w-full mt-1 px-3 py-2 border rounded-lg"></textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Observações Entrega</label>
+            <textarea v-model="form.obs_entrega" class="w-full mt-1 px-3 py-2 border rounded-lg"></textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Forma Pagamento</label>
+            <input v-model="form.forma_pag" class="w-full mt-1 px-3 py-2 border rounded-lg" />
+          </div>
+        </div>
+
+        <!-- Adicionar Item -->
+        <div class="mb-4 p-4 bg-gray-50 rounded-lg">
+          <h3 class="font-medium mb-2">Adicionar Item</h3>
+          <div class="flex gap-2 mb-2">
+            <n-select v-model:value="selectedProduto" :options="produtoOptions" class="flex-1" />
+            <button @click="addProduto" :disabled="!selectedProduto" class="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+              Add
+            </button>
+          </div>
+
+          <!-- Itens do Pedido -->
+          <div v-if="pedido.itens.length > 0" class="space-y-3 mt-4">
+            <div v-for="(item, idx) in pedido.itens" :key="idx" class="bg-white p-3 rounded border">
+              <div class="flex justify-between items-start mb-2">
+                <div>
+                  <span class="font-medium">{{ item.produto?.produto }}</span>
+                  <span class="text-sm text-gray-500 ml-2">R$ {{ getItemPreco(item) }}</span>
+                </div>
+                <button @click="removerItem(idx)" class="text-red-600 text-sm">Remover</button>
+              </div>
+
+              <!-- Quantidades por Tamanho -->
+              <div class="grid grid-cols-7 gap-1 text-sm">
+                <div v-for="t in TAMANHOS" :key="t" class="text-center">
+                  <label class="text-xs text-gray-500">{{ t.toUpperCase() }}</label>
+                  <input
+                    type="number"
+                    min="0"
+                    :value="item.quantidades[t]"
+                    @input="e => atualizarQuantidade(idx, t, parseInt(e.target.value) || 0)"
+                    class="w-full px-1 py-1 border rounded text-center"
+                  />
+                </div>
+              </div>
+
+              <div class="mt-2 text-right text-sm">
+                <span class="text-gray-500">Subtotal: </span>
+                <span class="font-medium">R$ {{ getItemSubtotal(item).toFixed(2) }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="text-center text-gray-500 py-4">
+            Nenhum item adicionado
+          </div>
+        </div>
+
+        <!-- Resumo -->
+        <div v-if="pedido.itens.length > 0" class="mb-4 p-4 bg-blue-50 rounded-lg">
+          <h3 class="font-medium mb-2">Resumo</h3>
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <div>Quantidade Total:</div>
+            <div class="text-right font-medium">{{ resumo.quantidadeTotal }}</div>
+            <div>Subtotal:</div>
+            <div class="text-right">R$ {{ resumo.subtotalItens.toFixed(2) }}</div>
+            <div>Descontos Itens:</div>
+            <div class="text-right text-red-600">- R$ {{ resumo.descontosItens.toFixed(2) }}</div>
+            <div>Desconto Pedido (%):</div>
+            <div class="flex items-center gap-2 justify-end">
+              <input v-model="form.desconto_percentual" type="number" min="0" max="100" class="w-16 px-2 py-1 border rounded text-right" @input="pedido.desconto_percentual = parseFloat($event.target.value) || 0" />
+              <span>(-R$ {{ (resumo.subtotalItens * form.desconto_percentual / 100).toFixed(2) }})</span>
+            </div>
+            <div>Desconto Valor:</div>
+            <div class="flex items-center gap-2 justify-end">
+              <input v-model="form.desconto_valor" type="number" min="0" step="0.01" class="w-24 px-2 py-1 border rounded text-right" @input="pedido.desconto_valor = parseFloat($event.target.value) || 0" />
+            </div>
+            <div class="font-bold text-lg">Total:</div>
+            <div class="text-right font-bold text-lg text-blue-600">R$ {{ resumo.total.toFixed(2) }}</div>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-3">
+          <button type="button" @click="showModal = false" class="px-4 py-2 border rounded-lg">Cancelar</button>
+          <button @click="savePedido" :disabled="saving || pedido.itens.length === 0" class="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+            {{ saving ? 'Salvando...' : 'Criar Pedido' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Itens (Lista Rápida) -->
+    <div v-if="showItensModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+      <div class="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[70vh] overflow-hidden">
+        <div class="bg-blue-600 text-white px-6 py-4">
+          <div class="flex justify-between items-center">
+            <h2 class="text-lg font-semibold flex items-center">
+              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v6a2 2 0 002 2h6a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+              </svg>
+              Itens do Pedido #{{ selectedPedido?.id_pedido }}
+            </h2>
+            <button @click="showItensModal = false" class="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-1 transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+          </div>
+
+        <div class="p-6">
+
+
+          <div v-else-if="!itens || itens.length === 0" class="text-center py-8">
+            <svg class="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+            </svg>
+            <p class="text-gray-500">Nenhum item encontrado neste pedido.</p>
+            <!-- Debug info only in development -->
+            <div v-if="false" class="mt-4 p-4 bg-gray-100 rounded text-left text-xs">
+              <p><strong>Debug Info (Desenvolvimento):</strong></p>
+              <p>Modal aberto: {{ showItensModal }}</p>
+              <p>Pedido selecionado: {{ selectedPedido?.id_pedido }}</p>
+              <p>Itens carregados: {{ itens?.length || 0 }}</p>
+            </div>
+          </div>
+
+          <div v-else>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-2 text-left font-medium text-gray-700">Produto</th>
+                    <th class="px-4 py-2 text-left font-medium text-gray-700">Referência</th>
+                    <th class="px-4 py-2 text-center font-medium text-gray-700">Tamanhos</th>
+                    <th class="px-4 py-2 text-right font-medium text-gray-700">Qtd Total</th>
+                    <th class="px-4 py-2 text-right font-medium text-gray-700">Valor</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                  <tr v-for="item in itens" :key="item.id_item_pedido" class="hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium text-gray-900">
+                      {{ item.produto?.produto || item.produto || 'Produto não informado' }}
+                    </td>
+                    <td class="px-4 py-3 text-gray-600">
+                      {{ item.referencia || item.produto?.referencia || '-' }}
+                    </td>
+                    <td class="px-4 py-3">
+                      <div class="flex flex-wrap gap-1">
+                        <span v-if="item.tam_pp" class="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">PP:{{ item.tam_pp }}</span>
+                        <span v-if="item.tam_p" class="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">P:{{ item.tam_p }}</span>
+                        <span v-if="item.tam_m" class="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">M:{{ item.tam_m }}</span>
+                        <span v-if="item.tam_g" class="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">G:{{ item.tam_g }}</span>
+                        <span v-if="item.tam_u" class="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">U:{{ item.tam_u }}</span>
+                        <span v-if="item.tam_rn" class="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">RN:{{ item.tam_rn }}</span>
+                        <span v-if="item.ida_1" class="inline-flex items-center px-2 py-1 rounded text-xs bg-pink-100 text-pink-800">1:{{ item.ida_1 }}</span>
+                        <span v-if="item.ida_2" class="inline-flex items-center px-2 py-1 rounded text-xs bg-pink-100 text-pink-800">2:{{ item.ida_2 }}</span>
+                        <span v-if="item.ida_3" class="inline-flex items-center px-2 py-1 rounded text-xs bg-pink-100 text-pink-800">3:{{ item.ida_3 }}</span>
+                        <span v-if="item.ida_4" class="inline-flex items-center px-2 py-1 rounded text-xs bg-pink-100 text-pink-800">4:{{ item.ida_4 }}</span>
+                        <span v-if="item.ida_6" class="inline-flex items-center px-2 py-1 rounded text-xs bg-pink-100 text-pink-800">6:{{ item.ida_6 }}</span>
+                        <span v-if="item.ida_8" class="inline-flex items-center px-2 py-1 rounded text-xs bg-pink-100 text-pink-800">8:{{ item.ida_8 }}</span>
+                        <span v-if="item.ida_10" class="inline-flex items-center px-2 py-1 rounded text-xs bg-pink-100 text-pink-800">10:{{ item.ida_10 }}</span>
+                        <span v-if="item.ida_12" class="inline-flex items-center px-2 py-1 rounded text-xs bg-pink-100 text-pink-800">12:{{ item.ida_12 }}</span>
+                        <span v-if="item.lisa" class="inline-flex items-center px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">Lisa:{{ item.lisa }}</span>
+                      </div>
+                    </td>
+                    <td class="px-4 py-3 text-right font-medium">
+                      {{ item.tam_pp + item.tam_p + item.tam_m + item.tam_g + item.tam_u + item.tam_rn + item.ida_1 + item.ida_2 + item.ida_3 + item.ida_4 + item.ida_6 + item.ida_8 + item.ida_10 + item.ida_12 + item.lisa }}
+                    </td>
+                    <td class="px-4 py-3 text-right font-semibold text-green-600">
+                      R$ {{ formatMoney(item.total_item) }}
+                    </td>
+                  </tr>
+                </tbody>
+                <tfoot class="bg-gray-50">
+                  <tr>
+                    <td colspan="3" class="px-4 py-3 text-right font-semibold">Total do Pedido:</td>
+                    <td class="px-4 py-3 text-right font-bold text-lg text-blue-600">
+                      {{ itens.reduce((total, item) => total + (item.tam_pp + item.tam_p + item.tam_m + item.tam_g + item.tam_u + item.tam_rn + item.ida_1 + item.ida_2 + item.ida_3 + item.ida_4 + item.ida_6 + item.ida_8 + item.ida_10 + item.ida_12 + item.lisa), 0) }} unidades
+                    </td>
+                    <td class="px-4 py-3 text-right font-bold text-lg text-green-600">
+                      R$ {{ formatMoney(itens.reduce((total, item) => total + parseFloat(item.total_item || 0), 0)) }}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-gray-50 px-6 py-4 flex justify-between items-center">
+          <div class="text-sm text-gray-600 flex items-center gap-4">
+            <span><span class="font-medium">{{ itens?.length || 0 }}</span> produto(s) encontrado(s)</span>
+            <span v-if="selectedPedido" class="text-gray-500">
+              Pedido #{{ selectedPedido.id_pedido }} •
+              <span :class="selectedPedido.status === 'concluido' ? 'text-green-600' : selectedPedido.status === 'cancelado' ? 'text-red-600' : 'text-yellow-600'">
+                {{ selectedPedido.status || 'pendente' }}
+              </span>
+            </span>
+          </div>
+          <button @click="showItensModal = false" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Cálculo Detalhado (Simplificado) -->
+    <div v-if="showCalculoModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+      <div class="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[60vh] overflow-hidden">
+        <div class="bg-green-600 text-white px-6 py-4">
+          <div class="flex justify-between items-center">
+            <h2 class="text-lg font-semibold">Cálculo Detalhado</h2>
+            <button @click="showCalculoModal = false" class="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-1 transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+        </div>
+
+        <div class="p-6">
+          <div v-if="calcLoading" class="text-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-4"></div>
+            <p class="text-gray-600">Carregando dados...</p>
+          </div>
+          <div v-else class="text-center py-8">
+            <svg class="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"></path>
+            </svg>
+            <p class="text-gray-500">Funcionalidade em desenvolvimento</p>
+            <p class="text-gray-400 text-sm mt-1">Em breve disponível</p>
+          </div>
+        </div>
+
+        <div class="bg-gray-50 px-6 py-4 flex justify-end">
+          <button @click="showCalculoModal = false" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>

@@ -1,0 +1,1674 @@
+<script setup>
+import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import api from '../composables/useApi'
+
+const router = useRouter()
+const authStore = useAuthStore()
+const loading = ref(true)
+const clientes = ref([])
+const searchTerm = ref('')
+const statusFilter = ref('')
+const showModal = ref(false)
+const editingCliente = ref(null)
+const showPedidosModal = ref(false)
+const pedidosCliente = ref([])
+const clienteSelecionado = ref(null)
+const loadingPedidos = ref(false)
+const saving = ref(false)
+const form = ref({
+  razao_social: '',
+  nome_fantasia: '',
+  responsavel: '',
+  cpf_cnpj: '',
+  pessoa: 'F',
+  email: '',
+  endereco: '',
+  bairro: '',
+  cidade: '',
+  estado: '',
+  cep: '',
+  status: true
+})
+
+const filteredClientes = computed(() => {
+  return clientes.value.filter(cliente => {
+    const matchesSearch = !searchTerm.value ||
+      cliente.razao_social.toLowerCase().includes(searchTerm.value.toLowerCase()) ||
+      cliente.nome_fantasia?.toLowerCase().includes(searchTerm.value.toLowerCase()) ||
+      cliente.cpf_cnpj?.includes(searchTerm.value)
+
+    const matchesStatus = !statusFilter.value || cliente.status.toString() === statusFilter.value
+
+    return matchesSearch && matchesStatus
+  })
+})
+
+onMounted(() => {
+  if (!authStore.isAuthenticated || !authStore.isAdmin) {
+    router.push('/')
+    return
+  }
+  loadClientes()
+})
+
+async function loadClientes() {
+  try {
+    loading.value = true
+    const response = await api.getClientes()
+    clientes.value = response.data.data
+  } catch (error) {
+    console.error('Erro:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+function openNew() {
+  editingCliente.value = null
+  form.value = {
+    razao_social: '', nome_fantasia: '', responsavel: '', cpf_cnpj: '',
+    pessoa: 'F', email: '', endereco: '', bairro: '', cidade: '',
+    estado: '', cep: '', status: true
+  }
+  showModal.value = true
+}
+
+function openEdit(cliente) {
+  editingCliente.value = cliente
+  form.value = { ...cliente }
+  showModal.value = true
+}
+
+async function saveCliente() {
+  saving.value = true
+  try {
+    if (editingCliente.value) {
+      await api.updateCliente(editingCliente.value.id_cliente, form.value)
+    } else {
+      await api.createCliente(form.value)
+    }
+    showModal.value = false
+    loadClientes()
+  } catch (error) {
+    alert('Erro ao salvar cliente')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function deleteCliente(id) {
+  if (!confirm('Excluir cliente?')) return
+  try {
+    await api.deleteCliente(id)
+    loadClientes()
+  } catch (error) {
+    alert('Erro ao excluir')
+  }
+}
+
+function viewCliente(cliente) {
+  openEdit(cliente)
+}
+
+async function viewPedidos(cliente) {
+  clienteSelecionado.value = cliente
+  showPedidosModal.value = true
+  loadingPedidos.value = true
+
+  try {
+    const response = await api.getClienteDetalhes(cliente.id_cliente)
+    pedidosCliente.value = response.data.data?.pedidos || []
+  } catch (error) {
+    console.error('Erro:', error)
+    pedidosCliente.value = []
+  } finally {
+    loadingPedidos.value = false
+  }
+}
+
+function closePedidosModal() {
+  showPedidosModal.value = false
+  pedidosCliente.value = []
+  clienteSelecionado.value = null
+}
+
+function statusLabel(status) {
+  const labels = { 1: 'Aberto', 2: 'Pendente', 3: 'Cancelado', 4: 'Concluído' }
+  return labels[status] || status
+}
+
+function formatMoney(val) {
+  if (!val) return 'R$ 0,00'
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
+}
+</script>
+
+<template>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold text-gray-800">Clientes</h1>
+      <button @click="openNew" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+        + Novo Cliente
+      </button>
+    </div>
+
+    <!-- Filtros -->
+    <div class="mb-4 flex gap-4">
+      <input
+        v-model="searchTerm"
+        type="text"
+        placeholder="Buscar cliente..."
+        class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+      />
+      <select
+        v-model="statusFilter"
+        class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+      >
+        <option value="">Todos os status</option>
+        <option value="1">Ativos</option>
+        <option value="0">Inativos</option>
+      </select>
+    </div>
+
+    <!-- Loading -->
+    <div v-if="loading" class="flex justify-center py-12">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+    </div>
+
+    <!-- Lista de Clientes -->
+    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div
+        v-for="cliente in filteredClientes"
+        :key="cliente.id_cliente"
+        class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
+      >
+        <div class="flex justify-between items-start mb-4">
+          <div class="flex-1">
+            <h3 class="font-semibold text-gray-800 text-lg">{{ cliente.razao_social }}</h3>
+            <p class="text-sm text-gray-600">{{ cliente.nome_fantasia }}</p>
+            <p class="text-sm text-gray-500">{{ cliente.cpf_cnpj }}</p>
+          </div>
+          <span
+            :class="cliente.status ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+            class="px-2 py-1 rounded-full text-xs font-medium"
+          >
+            {{ cliente.status ? 'Ativo' : 'Inativo' }}
+          </span>
+        </div>
+
+        <div class="space-y-2 text-sm text-gray-600 mb-4">
+          <p><strong>Responsável:</strong> {{ cliente.responsavel || '-' }}</p>
+          <p><strong>Email:</strong> {{ cliente.email || '-' }}</p>
+          <p><strong>Cidade:</strong> {{ cliente.cidade }}/{{ cliente.estado }}</p>
+        </div>
+
+        <div class="flex gap-2">
+          <button
+            @click="viewCliente(cliente)"
+            class="flex-1 px-3 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded hover:bg-indigo-100 transition-colors text-sm font-medium"
+          >
+            Ver Detalhes
+          </button>
+          <button
+            @click="viewPedidos(cliente)"
+            class="flex-1 px-3 py-2 bg-cyan-50 border border-cyan-200 text-cyan-700 rounded hover:bg-cyan-100 transition-colors text-sm font-medium"
+          >
+            Ver Pedidos
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Cliente -->
+    <div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+        <div class="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-6 py-4">
+          <h2 class="text-xl font-bold flex items-center">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+            </svg>
+            {{ editingCliente ? 'Editar Cliente' : 'Novo Cliente' }}
+          </h2>
+        </div>
+
+        <div class="p-6 overflow-y-auto max-h-[70vh]">
+          <form @submit.prevent="saveCliente" class="space-y-6">
+            <!-- Seção: Informações Básicas -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <h3 class="font-medium text-gray-800 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Informações Básicas
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Razão Social *</label>
+                  <input
+                    v-model="form.razao_social"
+                    type="text"
+                    required
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Digite a razão social"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Nome Fantasia</label>
+                  <input
+                    v-model="form.nome_fantasia"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Nome fantasia (opcional)"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Responsável</label>
+                  <input
+                    v-model="form.responsavel"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Nome do responsável"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Pessoa</label>
+                  <select
+                    v-model="form.pessoa"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="F">Pessoa Física</option>
+                    <option value="J">Pessoa Jurídica</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Seção: Documentos e Contato -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <h3 class="font-medium text-gray-800 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                </svg>
+                Documentos e Contato
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">CPF/CNPJ</label>
+                  <input
+                    v-model="form.cpf_cnpj"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Digite o CPF ou CNPJ"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input
+                    v-model="form.email"
+                    type="email"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="email@exemplo.com"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Seção: Endereço -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <h3 class="font-medium text-gray-800 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                Endereço
+              </h3>
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
+                  <input
+                    v-model="form.endereco"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Rua, número, complemento"
+                  />
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Bairro</label>
+                    <input
+                      v-model="form.bairro"
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Bairro"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cidade</label>
+                    <input
+                      v-model="form.cidade"
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Cidade"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                    <input
+                      v-model="form.estado"
+                      type="text"
+                      maxlength="2"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 uppercase"
+                      placeholder="UF"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">CEP</label>
+                  <input
+                    v-model="form.cep"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="00000-000"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+              <button
+                type="button"
+                @click="showModal = false"
+                class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                :disabled="saving"
+                class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+              >
+                {{ saving ? 'Salvando...' : 'Salvar Cliente' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Pedidos do Cliente -->
+    <div v-if="showPedidosModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
+        <div class="bg-gradient-to-r from-cyan-600 to-cyan-700 text-white px-6 py-4">
+          <h2 class="text-xl font-bold flex items-center">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            Pedidos de {{ clienteSelecionado?.razao_social }}
+          </h2>
+        </div>
+
+        <div class="p-6 overflow-y-auto max-h-[70vh]">
+          <div v-if="loadingPedidos" class="text-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-cyan-600 mx-auto mb-4"></div>
+            <p class="text-gray-600">Carregando pedidos do cliente...</p>
+          </div>
+
+          <div v-else-if="pedidosCliente.length === 0" class="text-center py-12">
+            <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <p class="text-gray-500 text-lg">Nenhum pedido encontrado</p>
+            <p class="text-gray-400 text-sm">Este cliente ainda não possui pedidos cadastrados.</p>
+          </div>
+
+          <div v-else>
+            <!-- Estatísticas rápidas -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-blue-600 uppercase tracking-wide">Total Pedidos</p>
+                    <p class="text-2xl font-bold text-blue-800">{{ pedidosCliente.length }}</p>
+                  </div>
+                  <div class="bg-blue-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-green-600 uppercase tracking-wide">Valor Total</p>
+                    <p class="text-2xl font-bold text-green-800">{{ formatMoney(pedidosCliente.reduce((total, p) => total + parseFloat(p.total_pedido || 0), 0)) }}</p>
+                  </div>
+                  <div class="bg-green-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-purple-600 uppercase tracking-wide">Ticket Médio</p>
+                    <p class="text-2xl font-bold text-purple-800">{{ formatMoney(pedidosCliente.reduce((total, p) => total + parseFloat(p.total_pedido || 0), 0) / pedidosCliente.length) }}</p>
+                  </div>
+                  <div class="bg-purple-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-orange-600 uppercase tracking-wide">Último Pedido</p>
+                    <p class="text-lg font-bold text-orange-800">{{ new Date(Math.max(...pedidosCliente.map(p => new Date(p.data_pedido)))).toLocaleDateString('pt-BR') }}</p>
+                  </div>
+                  <div class="bg-orange-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabela de pedidos -->
+            <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h3 class="font-semibold text-gray-800 flex items-center">
+                  <svg class="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                  </svg>
+                  Histórico Detalhado
+                </h3>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-4 py-3 text-left font-medium text-gray-700">Pedido</th>
+                      <th class="px-4 py-3 text-left font-medium text-gray-700">Data</th>
+                      <th class="px-4 py-3 text-left font-medium text-gray-700">Vendedor</th>
+                      <th class="px-4 py-3 text-center font-medium text-gray-700">Itens</th>
+                      <th class="px-4 py-3 text-right font-medium text-gray-700">Valor</th>
+                      <th class="px-4 py-3 text-center font-medium text-gray-700">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200">
+                    <tr v-for="pedido in pedidosCliente" :key="pedido.id_pedido" class="hover:bg-gray-50">
+                      <td class="px-4 py-3 font-medium text-gray-900">#{{ pedido.id_pedido }}</td>
+                      <td class="px-4 py-3 text-gray-600">{{ new Date(pedido.data_pedido).toLocaleDateString('pt-BR') }}</td>
+                      <td class="px-4 py-3 text-gray-600">{{ pedido.nome_vendedor || '-' }}</td>
+                      <td class="px-4 py-3 text-center">
+                        <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
+                          {{ pedido.quantidade_itens || 0 }}
+                        </span>
+                      </td>
+                      <td class="px-4 py-3 text-right font-semibold text-green-600">R$ {{ formatMoney(pedido.total_pedido) }}</td>
+                      <td class="px-4 py-3 text-center">
+                        <span :class="{
+                          'bg-blue-100 text-blue-800': pedido.status === 1,
+                          'bg-yellow-100 text-yellow-800': pedido.status === 2,
+                          'bg-red-100 text-red-800': pedido.status === 3,
+                          'bg-green-100 text-green-800': pedido.status === 4
+                        }" class="px-3 py-1 rounded-full text-xs font-medium">
+                          {{ statusLabel(pedido.status) }}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-gray-50 px-6 py-4 flex justify-end">
+          <button @click="closePedidosModal" class="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<template>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold text-gray-800">Clientes</h1>
+      <button @click="openNew" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+        + Novo Cliente
+      </button>
+    </div>
+
+    <!-- Filtros -->
+    <div class="mb-4 flex gap-4">
+      <input
+        v-model="searchTerm"
+        type="text"
+        placeholder="Buscar cliente..."
+        class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+      />
+      <select
+        v-model="statusFilter"
+        class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+      >
+        <option value="">Todos os status</option>
+        <option value="1">Ativos</option>
+        <option value="0">Inativos</option>
+      </select>
+    </div>
+
+    <!-- Loading -->
+    <div v-if="loading" class="flex justify-center py-12">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+    </div>
+
+    <!-- Lista de Clientes -->
+    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div
+        v-for="cliente in filteredClientes"
+        :key="cliente.id_cliente"
+        class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
+      >
+        <div class="flex justify-between items-start mb-4">
+          <div class="flex-1">
+            <h3 class="font-semibold text-gray-800 text-lg">{{ cliente.razao_social }}</h3>
+            <p class="text-sm text-gray-600">{{ cliente.nome_fantasia }}</p>
+            <p class="text-sm text-gray-500">{{ cliente.cpf_cnpj }}</p>
+          </div>
+          <span
+            :class="cliente.status ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+            class="px-2 py-1 rounded-full text-xs font-medium"
+          >
+            {{ cliente.status ? 'Ativo' : 'Inativo' }}
+          </span>
+        </div>
+
+        <div class="space-y-2 text-sm text-gray-600 mb-4">
+          <p><strong>Responsável:</strong> {{ cliente.responsavel || '-' }}</p>
+          <p><strong>Email:</strong> {{ cliente.email || '-' }}</p>
+          <p><strong>Cidade:</strong> {{ cliente.cidade }}/{{ cliente.estado }}</p>
+        </div>
+
+        <div class="flex gap-2">
+          <button
+            @click="viewCliente(cliente)"
+            class="flex-1 px-3 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded hover:bg-indigo-100 transition-colors text-sm font-medium"
+          >
+            Ver Detalhes
+          </button>
+          <button
+            @click="viewPedidos(cliente)"
+            class="flex-1 px-3 py-2 bg-cyan-50 border border-cyan-200 text-cyan-700 rounded hover:bg-cyan-100 transition-colors text-sm font-medium"
+          >
+            Ver Pedidos
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Cliente -->
+    <div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+        <div class="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-6 py-4">
+          <h2 class="text-xl font-bold flex items-center">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+            </svg>
+            {{ editingCliente ? 'Editar Cliente' : 'Novo Cliente' }}
+          </h2>
+        </div>
+
+        <div class="p-6 overflow-y-auto max-h-[70vh]">
+          <form @submit.prevent="saveCliente" class="space-y-6">
+            <!-- Seção: Informações Básicas -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <h3 class="font-medium text-gray-800 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Informações Básicas
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Razão Social *</label>
+                  <input
+                    v-model="form.razao_social"
+                    type="text"
+                    required
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Digite a razão social"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Nome Fantasia</label>
+                  <input
+                    v-model="form.nome_fantasia"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Nome fantasia (opcional)"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Responsável</label>
+                  <input
+                    v-model="form.responsavel"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Nome do responsável"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Pessoa</label>
+                  <select
+                    v-model="form.pessoa"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="F">Pessoa Física</option>
+                    <option value="J">Pessoa Jurídica</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Seção: Documentos e Contato -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <h3 class="font-medium text-gray-800 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                </svg>
+                Documentos e Contato
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">CPF/CNPJ</label>
+                  <input
+                    v-model="form.cpf_cnpj"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Digite o CPF ou CNPJ"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input
+                    v-model="form.email"
+                    type="email"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="email@exemplo.com"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Seção: Endereço -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <h3 class="font-medium text-gray-800 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                Endereço
+              </h3>
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
+                  <input
+                    v-model="form.endereco"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Rua, número, complemento"
+                  />
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Bairro</label>
+                    <input
+                      v-model="form.bairro"
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Bairro"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cidade</label>
+                    <input
+                      v-model="form.cidade"
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Cidade"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                    <input
+                      v-model="form.estado"
+                      type="text"
+                      maxlength="2"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 uppercase"
+                      placeholder="UF"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">CEP</label>
+                  <input
+                    v-model="form.cep"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="00000-000"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+              <button
+                type="button"
+                @click="showModal = false"
+                class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                :disabled="saving"
+                class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+              >
+                {{ saving ? 'Salvando...' : 'Salvar Cliente' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Pedidos do Cliente -->
+    <div v-if="showPedidosModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
+        <div class="bg-gradient-to-r from-cyan-600 to-cyan-700 text-white px-6 py-4">
+          <h2 class="text-xl font-bold flex items-center">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            Pedidos de {{ clienteSelecionado?.razao_social }}
+          </h2>
+        </div>
+
+        <div class="p-6 overflow-y-auto max-h-[70vh]">
+          <div v-if="loadingPedidos" class="text-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-cyan-600 mx-auto mb-4"></div>
+            <p class="text-gray-600">Carregando pedidos do cliente...</p>
+          </div>
+
+          <div v-else-if="pedidosCliente.length === 0" class="text-center py-12">
+            <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <p class="text-gray-500 text-lg">Nenhum pedido encontrado</p>
+            <p class="text-gray-400 text-sm">Este cliente ainda não possui pedidos cadastrados.</p>
+          </div>
+
+          <div v-else>
+            <!-- Estatísticas rápidas -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-blue-600 uppercase tracking-wide">Total Pedidos</p>
+                    <p class="text-2xl font-bold text-blue-800">{{ pedidosCliente.length }}</p>
+                  </div>
+                  <div class="bg-blue-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-green-600 uppercase tracking-wide">Valor Total</p>
+                    <p class="text-2xl font-bold text-green-800">{{ formatMoney(pedidosCliente.reduce((total, p) => total + parseFloat(p.total_pedido || 0), 0)) }}</p>
+                  </div>
+                  <div class="bg-green-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-purple-600 uppercase tracking-wide">Ticket Médio</p>
+                    <p class="text-2xl font-bold text-purple-800">{{ formatMoney(pedidosCliente.reduce((total, p) => total + parseFloat(p.total_pedido || 0), 0) / pedidosCliente.length) }}</p>
+                  </div>
+                  <div class="bg-purple-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-orange-600 uppercase tracking-wide">Último Pedido</p>
+                    <p class="text-lg font-bold text-orange-800">{{ new Date(Math.max(...pedidosCliente.map(p => new Date(p.data_pedido)))).toLocaleDateString('pt-BR') }}</p>
+                  </div>
+                  <div class="bg-orange-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabela de pedidos -->
+            <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h3 class="font-semibold text-gray-800 flex items-center">
+                  <svg class="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                  </svg>
+                  Histórico Detalhado
+                </h3>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-4 py-3 text-left font-medium text-gray-700">Pedido</th>
+                      <th class="px-4 py-3 text-left font-medium text-gray-700">Data</th>
+                      <th class="px-4 py-3 text-left font-medium text-gray-700">Vendedor</th>
+                      <th class="px-4 py-3 text-center font-medium text-gray-700">Itens</th>
+                      <th class="px-4 py-3 text-right font-medium text-gray-700">Valor</th>
+                      <th class="px-4 py-3 text-center font-medium text-gray-700">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200">
+                    <tr v-for="pedido in pedidosCliente" :key="pedido.id_pedido" class="hover:bg-gray-50">
+                      <td class="px-4 py-3 font-medium text-gray-900">#{{ pedido.id_pedido }}</td>
+                      <td class="px-4 py-3 text-gray-600">{{ new Date(pedido.data_pedido).toLocaleDateString('pt-BR') }}</td>
+                      <td class="px-4 py-3 text-gray-600">{{ pedido.nome_vendedor || '-' }}</td>
+                      <td class="px-4 py-3 text-center">
+                        <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
+                          {{ pedido.quantidade_itens || 0 }}
+                        </span>
+                      </td>
+                      <td class="px-4 py-3 text-right font-semibold text-green-600">R$ {{ formatMoney(pedido.total_pedido) }}</td>
+                      <td class="px-4 py-3 text-center">
+                        <span :class="{
+                          'bg-blue-100 text-blue-800': pedido.status === 1,
+                          'bg-yellow-100 text-yellow-800': pedido.status === 2,
+                          'bg-red-100 text-red-800': pedido.status === 3,
+                          'bg-green-100 text-green-800': pedido.status === 4
+                        }" class="px-3 py-1 rounded-full text-xs font-medium">
+                          {{ statusLabel(pedido.status) }}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-gray-50 px-6 py-4 flex justify-end">
+          <button @click="closePedidosModal" class="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+            <p class="text-sm text-gray-600">{{ cliente.nome_fantasia }}</p>
+            <p class="text-sm text-gray-500">{{ cliente.cpf_cnpj }}</p>
+          </div>
+          <span
+            :class="cliente.status ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+            class="px-2 py-1 rounded-full text-xs font-medium"
+          >
+            {{ cliente.status ? 'Ativo' : 'Inativo' }}
+          </span>
+        </div>
+
+        <div class="space-y-2 text-sm text-gray-600 mb-4">
+          <p><strong>Responsável:</strong> {{ cliente.responsavel || '-' }}</p>
+          <p><strong>Email:</strong> {{ cliente.email || '-' }}</p>
+          <p><strong>Cidade:</strong> {{ cliente.cidade }}/{{ cliente.estado }}</p>
+        </div>
+
+        <div class="flex gap-2">
+          <button
+            @click="viewCliente(cliente)"
+            class="flex-1 px-3 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded hover:bg-indigo-100 transition-colors text-sm font-medium"
+          >
+            Ver Detalhes
+          </button>
+          <button
+            @click="viewPedidos(cliente)"
+            class="flex-1 px-3 py-2 bg-cyan-50 border border-cyan-200 text-cyan-700 rounded hover:bg-cyan-100 transition-colors text-sm font-medium"
+          >
+            Ver Pedidos
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Cliente -->
+    <div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+        <div class="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-6 py-4">
+          <h2 class="text-xl font-bold flex items-center">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+            </svg>
+            {{ editingCliente ? 'Editar Cliente' : 'Novo Cliente' }}
+          </h2>
+        </div>
+
+        <div class="p-6 overflow-y-auto max-h-[70vh]">
+          <form @submit.prevent="saveCliente" class="space-y-6">
+            <!-- Seção: Informações Básicas -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <h3 class="font-medium text-gray-800 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Informações Básicas
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Razão Social *</label>
+                  <input
+                    v-model="form.razao_social"
+                    type="text"
+                    required
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Digite a razão social"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Nome Fantasia</label>
+                  <input
+                    v-model="form.nome_fantasia"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Nome fantasia (opcional)"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Responsável</label>
+                  <input
+                    v-model="form.responsavel"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Nome do responsável"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Pessoa</label>
+                  <select
+                    v-model="form.pessoa"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="F">Pessoa Física</option>
+                    <option value="J">Pessoa Jurídica</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Seção: Documentos e Contato -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <h3 class="font-medium text-gray-800 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                </svg>
+                Documentos e Contato
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">CPF/CNPJ</label>
+                  <input
+                    v-model="form.cpf_cnpj"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Digite o CPF ou CNPJ"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input
+                    v-model="form.email"
+                    type="email"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="email@exemplo.com"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Seção: Endereço -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <h3 class="font-medium text-gray-800 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                Endereço
+              </h3>
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
+                  <input
+                    v-model="form.endereco"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Rua, número, complemento"
+                  />
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Bairro</label>
+                    <input
+                      v-model="form.bairro"
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Bairro"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cidade</label>
+                    <input
+                      v-model="form.cidade"
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Cidade"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                    <input
+                      v-model="form.estado"
+                      type="text"
+                      maxlength="2"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 uppercase"
+                      placeholder="UF"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">CEP</label>
+                  <input
+                    v-model="form.cep"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="00000-000"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+              <button
+                type="button"
+                @click="showModal = false"
+                class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                :disabled="loading"
+                class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+              >
+                {{ loading ? 'Salvando...' : 'Salvar Cliente' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Pedidos do Cliente -->
+    <div v-if="showPedidosModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
+        <div class="bg-gradient-to-r from-cyan-600 to-cyan-700 text-white px-6 py-4">
+          <h2 class="text-xl font-bold flex items-center">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            Pedidos de {{ clienteSelecionado?.razao_social }}
+          </h2>
+        </div>
+
+        <div class="p-6 overflow-y-auto max-h-[70vh]">
+          <div v-if="loadingPedidos" class="text-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-cyan-600 mx-auto mb-4"></div>
+            <p class="text-gray-600">Carregando pedidos do cliente...</p>
+          </div>
+
+          <div v-else-if="pedidosCliente.length === 0" class="text-center py-12">
+            <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <p class="text-gray-500 text-lg">Nenhum pedido encontrado</p>
+            <p class="text-gray-400 text-sm">Este cliente ainda não possui pedidos cadastrados.</p>
+          </div>
+
+          <div v-else>
+            <!-- Estatísticas rápidas -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-blue-600 uppercase tracking-wide">Total Pedidos</p>
+                    <p class="text-2xl font-bold text-blue-800">{{ pedidosCliente.length }}</p>
+                  </div>
+                  <div class="bg-blue-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-green-600 uppercase tracking-wide">Valor Total</p>
+                    <p class="text-2xl font-bold text-green-800">{{ formatMoney(pedidosCliente.reduce((total, p) => total + parseFloat(p.total_pedido || 0), 0)) }}</p>
+                  </div>
+                  <div class="bg-green-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-purple-600 uppercase tracking-wide">Ticket Médio</p>
+                    <p class="text-2xl font-bold text-purple-800">{{ formatMoney(pedidosCliente.reduce((total, p) => total + parseFloat(p.total_pedido || 0), 0) / pedidosCliente.length) }}</p>
+                  </div>
+                  <div class="bg-purple-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-orange-600 uppercase tracking-wide">Último Pedido</p>
+                    <p class="text-lg font-bold text-orange-800">{{ new Date(Math.max(...pedidosCliente.map(p => new Date(p.data_pedido)))).toLocaleDateString('pt-BR') }}</p>
+                  </div>
+                  <div class="bg-orange-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabela de pedidos -->
+            <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h3 class="font-semibold text-gray-800 flex items-center">
+                  <svg class="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                  </svg>
+                  Histórico Detalhado
+                </h3>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-4 py-3 text-left font-medium text-gray-700">Pedido</th>
+                      <th class="px-4 py-3 text-left font-medium text-gray-700">Data</th>
+                      <th class="px-4 py-3 text-left font-medium text-gray-700">Vendedor</th>
+                      <th class="px-4 py-3 text-center font-medium text-gray-700">Itens</th>
+                      <th class="px-4 py-3 text-right font-medium text-gray-700">Valor</th>
+                      <th class="px-4 py-3 text-center font-medium text-gray-700">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200">
+                    <tr v-for="pedido in pedidosCliente" :key="pedido.id_pedido" class="hover:bg-gray-50">
+                      <td class="px-4 py-3 font-medium text-gray-900">#{{ pedido.id_pedido }}</td>
+                      <td class="px-4 py-3 text-gray-600">{{ new Date(pedido.data_pedido).toLocaleDateString('pt-BR') }}</td>
+                      <td class="px-4 py-3 text-gray-600">{{ pedido.nome_vendedor || '-' }}</td>
+                      <td class="px-4 py-3 text-center">
+                        <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
+                          {{ pedido.quantidade_itens || 0 }}
+                        </span>
+                      </td>
+                      <td class="px-4 py-3 text-right font-semibold text-green-600">R$ {{ formatMoney(pedido.total_pedido) }}</td>
+                      <td class="px-4 py-3 text-center">
+                        <span :class="{
+                          'bg-blue-100 text-blue-800': pedido.status === 1,
+                          'bg-yellow-100 text-yellow-800': pedido.status === 2,
+                          'bg-red-100 text-red-800': pedido.status === 3,
+                          'bg-green-100 text-green-800': pedido.status === 4
+                        }" class="px-3 py-1 rounded-full text-xs font-medium">
+                          {{ statusLabel(pedido.status) }}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-gray-50 px-6 py-4 flex justify-end">
+          <button @click="closePedidosModal" class="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+    <div v-else class="bg-white rounded-lg shadow-sm overflow-hidden">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Razão Social</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nome Fantasia</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contato</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cidade</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ações</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+          <tr v-for="cliente in clientes" :key="cliente.id_cliente" class="hover:bg-gray-50">
+            <td class="px-6 py-4 text-sm text-gray-800">{{ cliente.razao_social }}</td>
+            <td class="px-6 py-4 text-sm text-gray-600">{{ cliente.nome_fantasia }}</td>
+            <td class="px-6 py-4 text-sm text-gray-600">{{ cliente.contato_1 }}</td>
+            <td class="px-6 py-4 text-sm text-gray-600">{{ cliente.cidade }}</td>
+            <td class="px-6 py-4">
+              <span :class="cliente.status ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'" 
+                class="px-2 py-1 rounded-full text-xs">{{ cliente.status ? 'Ativo' : 'Inativo' }}</span>
+            </td>
+            <td class="px-6 py-4 text-right">
+              <button @click="loadPedidosCliente(cliente)" class="text-blue-600 hover:underline mr-3">Pedidos</button>
+              <button @click="openEdit(cliente)" class="text-primary-600 hover:underline mr-3">Editar</button>
+              <button @click="deleteCliente(cliente.id_cliente)" class="text-red-600 hover:underline">Excluir</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Modal Cliente -->
+    <div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+        <div class="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-6 py-4">
+          <h2 class="text-xl font-bold flex items-center">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+            </svg>
+            {{ editingCliente ? 'Editar Cliente' : 'Novo Cliente' }}
+          </h2>
+        </div>
+        <div class="p-6 overflow-y-auto max-h-[70vh]">
+          <form @submit.prevent="saveCliente" class="space-y-6">
+            <!-- Seção: Informações Básicas -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <h3 class="font-medium text-gray-800 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Informações Básicas
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Razão Social *</label>
+                  <input
+                    v-model="form.razao_social"
+                    type="text"
+                    required
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Digite a razão social"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Nome Fantasia</label>
+                  <input
+                    v-model="form.nome_fantasia"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Nome fantasia (opcional)"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Responsável</label>
+                  <input
+                    v-model="form.responsavel"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Nome do responsável"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Pessoa</label>
+                  <select
+                    v-model="form.pessoa"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="F">Pessoa Física</option>
+                    <option value="J">Pessoa Jurídica</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Seção: Documentos e Contato -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <h3 class="font-medium text-gray-800 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                </svg>
+                Documentos e Contato
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">CPF/CNPJ</label>
+                  <input
+                    v-model="form.cpf_cnpj"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Digite o CPF ou CNPJ"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input
+                    v-model="form.email"
+                    type="email"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="email@exemplo.com"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Seção: Endereço -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <h3 class="font-medium text-gray-800 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                Endereço
+              </h3>
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
+                  <input
+                    v-model="form.endereco"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Rua, número, complemento"
+                  />
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Bairro</label>
+                    <input
+                      v-model="form.bairro"
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Bairro"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cidade</label>
+                    <input
+                      v-model="form.cidade"
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Cidade"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                    <input
+                      v-model="form.estado"
+                      type="text"
+                      maxlength="2"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 uppercase"
+                      placeholder="UF"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">CEP</label>
+                  <input
+                    v-model="form.cep"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="00000-000"
+                  />
+                </div>
+              </div>
+            </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Contato 1</label>
+            <input v-model="form.contato_1" class="w-full mt-1 px-3 py-2 border rounded-lg" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Contato 2</label>
+            <input v-model="form.contato_2" class="w-full mt-1 px-3 py-2 border rounded-lg" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Rota</label>
+            <input v-model="form.rota" class="w-full mt-1 px-3 py-2 border rounded-lg" />
+          </div>
+          <div class="flex items-center">
+            <input v-model="form.status" type="checkbox" class="h-4 w-4 text-primary-600" />
+            <label class="ml-2 text-sm text-gray-700">Ativo</label>
+          </div>
+          <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+            <button
+              type="button"
+              @click="showModal = false"
+              class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              :disabled="loading"
+              class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+            >
+              {{ loading ? 'Salvando...' : 'Salvar Cliente' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal Pedidos do Cliente -->
+    <div v-if="showPedidosModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
+        <div class="bg-gradient-to-r from-cyan-600 to-cyan-700 text-white px-6 py-4">
+          <h2 class="text-xl font-bold flex items-center">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            Pedidos de {{ clienteSelecionado?.razao_social }}
+          </h2>
+        </div>
+
+        <div class="p-6 overflow-y-auto max-h-[70vh]">
+          <div v-if="loadingPedidos" class="text-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-cyan-600 mx-auto mb-4"></div>
+            <p class="text-gray-600">Carregando pedidos do cliente...</p>
+          </div>
+
+          <div v-else-if="pedidosCliente.length === 0" class="text-center py-12">
+            <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <p class="text-gray-500 text-lg">Nenhum pedido encontrado</p>
+            <p class="text-gray-400 text-sm">Este cliente ainda não possui pedidos cadastrados.</p>
+          </div>
+
+          <div v-else>
+            <!-- Estatísticas rápidas -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-blue-600 uppercase tracking-wide">Total Pedidos</p>
+                    <p class="text-2xl font-bold text-blue-800">{{ pedidosCliente.length }}</p>
+                  </div>
+                  <div class="bg-blue-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-green-600 uppercase tracking-wide">Valor Total</p>
+                    <p class="text-2xl font-bold text-green-800">{{ formatMoney(pedidosCliente.reduce((total, p) => total + parseFloat(p.total_pedido || 0), 0)) }}</p>
+                  </div>
+                  <div class="bg-green-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-purple-600 uppercase tracking-wide">Ticket Médio</p>
+                    <p class="text-2xl font-bold text-purple-800">{{ formatMoney(pedidosCliente.reduce((total, p) => total + parseFloat(p.total_pedido || 0), 0) / pedidosCliente.length) }}</p>
+                  </div>
+                  <div class="bg-purple-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-orange-600 uppercase tracking-wide">Último Pedido</p>
+                    <p class="text-lg font-bold text-orange-800">{{ new Date(Math.max(...pedidosCliente.map(p => new Date(p.data_pedido)))).toLocaleDateString('pt-BR') }}</p>
+                  </div>
+                  <div class="bg-orange-500 rounded-full p-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabela de pedidos -->
+            <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h3 class="font-semibold text-gray-800 flex items-center">
+                  <svg class="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                  </svg>
+                  Histórico Detalhado
+                </h3>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-4 py-3 text-left font-medium text-gray-700">Pedido</th>
+                      <th class="px-4 py-3 text-left font-medium text-gray-700">Data</th>
+                      <th class="px-4 py-3 text-left font-medium text-gray-700">Vendedor</th>
+                      <th class="px-4 py-3 text-center font-medium text-gray-700">Itens</th>
+                      <th class="px-4 py-3 text-right font-medium text-gray-700">Valor</th>
+                      <th class="px-4 py-3 text-center font-medium text-gray-700">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200">
+                    <tr v-for="pedido in pedidosCliente" :key="pedido.id_pedido" class="hover:bg-gray-50">
+                      <td class="px-4 py-3 font-medium text-gray-900">#{{ pedido.id_pedido }}</td>
+                      <td class="px-4 py-3 text-gray-600">{{ new Date(pedido.data_pedido).toLocaleDateString('pt-BR') }}</td>
+                      <td class="px-4 py-3 text-gray-600">{{ pedido.nome_vendedor || '-' }}</td>
+                      <td class="px-4 py-3 text-center">
+                        <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
+                          {{ pedido.quantidade_itens || 0 }}
+                        </span>
+                      </td>
+                      <td class="px-4 py-3 text-right font-semibold text-green-600">R$ {{ formatMoney(pedido.total_pedido) }}</td>
+                      <td class="px-4 py-3 text-center">
+                        <span :class="{
+                          'bg-blue-100 text-blue-800': pedido.status === 1,
+                          'bg-yellow-100 text-yellow-800': pedido.status === 2,
+                          'bg-red-100 text-red-800': pedido.status === 3,
+                          'bg-green-100 text-green-800': pedido.status === 4
+                        }" class="px-3 py-1 rounded-full text-xs font-medium">
+                          {{ statusLabel(pedido.status) }}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-gray-50 px-6 py-4 flex justify-end">
+          <button @click="closePedidosModal" class="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>

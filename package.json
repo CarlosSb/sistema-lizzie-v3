@@ -1,0 +1,25 @@
+{
+  "name": "sistema-lizzie-v3",
+  "version": "1.0.0",
+  "description": "Sistema Lizzie - CLI de desenvolvimento",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev:api & npm run dev:frontend",
+    "dev:api": "cd api && php artisan serve",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "npm install && cd api && composer install && cd ../frontend && npm install",
+    "build": "cd frontend && npm run build",
+    "build:all": "npm run build && cd ../api && composer install --optimize-autoloader",
+    "test": "echo \"Execute tests in respective folders\"",
+    "migrate": "cd api && php artisan migrate",
+    "migrate:rollback": "cd api && php artisan migrate:rollback",
+    "db:seed": "cd api && php artisan db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "php": ">=8.1"
+  }
+}
