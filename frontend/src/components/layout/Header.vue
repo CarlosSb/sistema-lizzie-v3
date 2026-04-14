@@ -216,7 +216,7 @@ onMounted(() => {
   border-bottom: 1px solid var(--gray-200);
   position: sticky;
   top: 0;
-  z-index: var(--z-fixed);
+  z-index: var(--z-header);
   backdrop-filter: blur(8px);
   transition: all var(--transition-fast);
   animation: headerSlideIn 0.6s ease-out;
@@ -381,7 +381,7 @@ onMounted(() => {
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
-  z-index: var(--z-dropdown);
+  z-index: var(--z-popover);
   overflow: hidden;
 }
 
