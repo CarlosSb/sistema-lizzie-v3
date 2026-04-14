@@ -86,7 +86,7 @@ onUnmounted(() => {
   right: 0;
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.5);
-  z-index: calc(var(--z-modal-backdrop) - 1);
+  z-index: var(--z-overlay);
   backdrop-filter: blur(4px);
 }
 
