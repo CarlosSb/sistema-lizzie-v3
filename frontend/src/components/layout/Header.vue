@@ -54,6 +54,8 @@ onMounted(() => {
           size="sm"
           @click="$emit('toggleSidebar')"
           class="sidebar-toggle"
+          :aria-label="'Alternar menu lateral'"
+          :aria-expanded="!sidebarCollapsed"
         >
           <MenuOutline />
         </Button>
@@ -79,6 +81,8 @@ onMounted(() => {
             type="text"
             placeholder="Buscar clientes, pedidos, produtos..."
             class="search-input"
+            aria-label="Campo de busca"
+            role="searchbox"
           />
         </div>
       </div>
@@ -91,19 +95,33 @@ onMounted(() => {
           size="sm"
           @click="toggleTheme"
           class="theme-toggle header-btn"
+          :aria-label="isDark ? 'Alternar para tema claro' : 'Alternar para tema escuro'"
         >
           <component :is="isDark ? SunnyOutline : MoonOutline" />
         </Button>
 
         <!-- Notifications -->
-        <Button variant="ghost" size="sm" class="notifications-btn header-btn">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="notifications-btn header-btn"
+          aria-label="Notificações"
+          :aria-describedby="'notification-count'"
+        >
           <NotificationsOutline />
-          <span class="notification-badge">3</span>
+          <span class="notification-badge" id="notification-count" aria-label="3 notificações não lidas">3</span>
         </Button>
 
         <!-- User Menu -->
         <div class="user-menu">
-          <Button variant="ghost" size="sm" class="user-btn header-btn">
+          <Button
+            variant="ghost"
+            size="sm"
+            class="user-btn header-btn"
+            :aria-label="'Menu do usuário ' + userDisplayName"
+            aria-haspopup="menu"
+            aria-expanded="false"
+          >
             <div class="user-avatar">
               <span class="user-initials">{{ userInitials }}</span>
             </div>

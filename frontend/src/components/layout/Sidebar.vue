@@ -118,10 +118,12 @@ const toggleSidebar = () => {
             <button
               :class="['nav-link', { 'nav-link-active': isActive(item.path) }]"
               @click="navigateTo(item.path)"
+              :aria-label="'Navegar para ' + item.name"
+              :aria-current="isActive(item.path) ? 'page' : undefined"
             >
               <component :is="item.icon" class="nav-icon" />
               <span v-if="!collapsed" class="nav-text">{{ item.name }}</span>
-              <span v-if="!collapsed && item.badge" class="nav-badge">{{ item.badge }}</span>
+              <span v-if="!collapsed && item.badge" class="nav-badge" :aria-label="item.badge + ' itens'">{{ item.badge }}</span>
             </button>
           </li>
         </ul>
@@ -135,6 +137,7 @@ const toggleSidebar = () => {
           @click="logout"
           class="logout-btn"
           :block="!collapsed"
+          aria-label="Fazer logout do sistema"
         >
           <LogOutOutline class="nav-icon" />
           <span v-if="!collapsed" class="nav-text">Sair</span>
