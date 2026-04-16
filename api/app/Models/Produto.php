@@ -51,7 +51,15 @@ class Produto extends Model
 
     public function getEstoqueAttribute()
     {
-        return 0;
+        $total = \Illuminate\Support\Facades\DB::table('item_estoques')
+            ->where('estoque_id', function ($q) {
+                $q->select('id')->from('estoques')
+                    ->where('ref_produto', $this->id_produto)->limit(1);
+            })
+            ->selectRaw('COALESCE(SUM(tam_p + tam_m + tam_g + tam_u + tam_rn + ida_1 + ida_2 + ida_3 + ida_4 + ida_6 + ida_8 + ida_10 + ida_12), 0) as total')
+            ->value('total');
+
+        return (int) $total;
     }
 
     public function getCategoriaAttribute()

@@ -256,9 +256,9 @@ class PedidoService
 
             if (!$estoque) continue;
 
-            $tamanhos = ['tam_pp', 'tam_p', 'tam_m', 'tam_g', 'tam_u', 'tam_rn', 'ida_1', 'ida_2', 'ida_3', 'ida_4', 'ida_6', 'ida_8'];
+            $tamanhos = ['tam_pp', 'tam_p', 'tam_m', 'tam_g', 'tam_u', 'tam_rn', 'ida_1', 'ida_2', 'ida_3', 'ida_4', 'ida_6', 'ida_8', 'ida_10', 'ida_12'];
             $updateData = [];
-            
+
             foreach ($tamanhos as $tm) {
                 $campoItem = $tm;
                 $campoEstoque = $tm;
@@ -294,7 +294,7 @@ class PedidoService
 
             if (!$estoque) continue;
 
-            $tamanhos = ['tam_pp', 'tam_p', 'tam_m', 'tam_g', 'tam_u', 'tam_rn', 'ida_1', 'ida_2', 'ida_3', 'ida_4', 'ida_6', 'ida_8'];
+            $tamanhos = ['tam_pp', 'tam_p', 'tam_m', 'tam_g', 'tam_u', 'tam_rn', 'ida_1', 'ida_2', 'ida_3', 'ida_4', 'ida_6', 'ida_8', 'ida_10', 'ida_12'];
             $updateData = [];
             
             foreach ($tamanhos as $tm) {
@@ -392,7 +392,8 @@ class PedidoService
     private function calcularDescontoItem(float $subtotal, float $percentual, float $valor): float
     {
         $descontoPercentual = ($subtotal * $percentual) / 100;
-        return $descontoPercentual + $valor;
+        $desconto = max($descontoPercentual, $valor);
+        return min($desconto, $subtotal);
     }
 
     private function getPedidoWithRelations(int $pedidoId): array

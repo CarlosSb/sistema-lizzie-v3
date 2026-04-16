@@ -16,7 +16,12 @@ class Vendedor extends Model
         'controle_acesso',
         'usuario',
         'senha',
-        'status'
+        'status',
+        'cpf',
+        'email',
+        'telefone',
+        'comissao',
+        'refresh_token'
     ];
 
     protected $casts = [

@@ -15,7 +15,13 @@ class JwtService
 
     public function __construct()
     {
-        $this->secretKey = env('JWT_SECRET', 'lizzie-jwt-secret-key-2024');
+        $this->secretKey = env('JWT_SECRET');
+
+        if (empty($this->secretKey)) {
+            throw new \RuntimeException(
+                'JWT_SECRET is not configured. Set it in your .env file.'
+            );
+        }
     }
 
     public function generateToken(Vendedor $vendedor): array
