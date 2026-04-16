@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\JwtService;
 use App\Services\AuditService;
 use App\Models\Vendedor;
+use App\Http\Middleware\RateLimitMiddleware;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -45,13 +46,21 @@ class AuthController extends Controller
         }
 
         $senhaValida = false;
-        
+
         if (str_starts_with($vendedor->senha, '$2y$')) {
             $senhaValida = password_verify($data['senha'], $vendedor->senha);
         } else {
+            // Senha legada em base64: verifica e faz upgrade para bcrypt
             $senhaValida = ($vendedor->senha === base64_encode($data['senha']));
+
+            if ($senhaValida) {
+                // Upgrade automático: converte senha base64 para bcrypt
+                DB::table('vendedores')
+                    ->where('id_vendedor', $vendedor->id_vendedor)
+                    ->update(['senha' => password_hash($data['senha'], PASSWORD_DEFAULT)]);
+            }
         }
-        
+
         if (!$senhaValida) {
             return response()->json([
                 'success' => false,
@@ -60,6 +69,17 @@ class AuthController extends Controller
         }
 
         $tokens = $this->jwtService->generateToken($vendedor);
+
+        // Armazenar hash do refresh token
+        $refreshTokenHash = hash('sha256', $tokens['refresh_token']);
+        DB::table('vendedores')
+            ->where('id_vendedor', $vendedor->id_vendedor)
+            ->update(['refresh_token' => $refreshTokenHash]);
+
+        AuditService::logLogin($request, $vendedor->id_vendedor, $vendedor->nome_vendedor);
+
+        // Reset rate limit on successful login
+        (new RateLimitMiddleware())->reset($request);
 
         return response()->json([
             'success' => true,
@@ -77,19 +97,30 @@ class AuthController extends Controller
                 'expires_in' => $tokens['expires_in']
             ]
         ]);
-        
-        AuditService::logLogin($request, $vendedor->id_vendedor, $vendedor->nome_vendedor);
     }
 
     public function refresh(Request $request)
     {
         $data = $request->all();
-        
+
         if (empty($data['refresh_token'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'Refresh token é obrigatório'
             ], 422);
+        }
+
+        // Verificar hash do refresh token no banco
+        $refreshTokenHash = hash('sha256', $data['refresh_token']);
+        $vendedor = DB::table('vendedores')
+            ->where('refresh_token', $refreshTokenHash)
+            ->first();
+
+        if (!$vendedor || $vendedor->status != 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Token de refresh inválido ou expirado'
+            ], 401);
         }
 
         $tokens = $this->jwtService->refreshAccessToken($data['refresh_token']);
@@ -101,6 +132,12 @@ class AuthController extends Controller
             ], 401);
         }
 
+        // Atualizar hash do novo refresh token
+        $newRefreshTokenHash = hash('sha256', $tokens['refresh_token']);
+        DB::table('vendedores')
+            ->where('id_vendedor', $vendedor->id_vendedor)
+            ->update(['refresh_token' => $newRefreshTokenHash]);
+
         return response()->json([
             'success' => true,
             'message' => 'Token refreshado com sucesso',
@@ -108,8 +145,18 @@ class AuthController extends Controller
         ]);
     }
 
-    public function logout()
+    public function logout(Request $request)
     {
+        $user = $request->attributes->get('user');
+
+        if ($user) {
+            DB::table('vendedores')
+                ->where('id_vendedor', $user->data->id)
+                ->update(['refresh_token' => null]);
+
+            AuditService::logLogout($request, $user->data->id, $user->data->nome);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Logout realizado com sucesso'

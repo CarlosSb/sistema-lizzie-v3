@@ -2,12 +2,67 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\AuditService;
 use App\Services\CacheService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class ClienteController extends Controller
 {
+    /**
+     * Validate CPF (Brazilian individual taxpayer registry).
+     * Checks format and checksum digits.
+     */
+    private function validarCpf(string $cpf): bool
+    {
+        $cpf = preg_replace('/[^0-9]/', '', $cpf);
+        if (strlen($cpf) !== 11 || preg_match('/^(\d)\1+$/', $cpf)) {
+            return false;
+        }
+        $soma = 0;
+        for ($i = 0; $i < 9; $i++) {
+            $soma += (int) $cpf[$i] * (10 - $i);
+        }
+        $resto = ($soma * 10) % 11;
+        if ($resto === 10) $resto = 0;
+        if ($resto !== (int) $cpf[9]) return false;
+        $soma = 0;
+        for ($i = 0; $i < 10; $i++) {
+            $soma += (int) $cpf[$i] * (11 - $i);
+        }
+        $resto = ($soma * 10) % 11;
+        if ($resto === 10) $resto = 0;
+        return $resto === (int) $cpf[10];
+    }
+
+    /**
+     * Validate CNPJ (Brazilian company taxpayer registry).
+     * Checks format and checksum digits.
+     */
+    private function validarCnpj(string $cnpj): bool
+    {
+        $cnpj = preg_replace('/[^0-9]/', '', $cnpj);
+        if (strlen($cnpj) !== 14 || preg_match('/^(\d)\1+$/', $cnpj)) {
+            return false;
+        }
+        $pesos = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+        $soma = 0;
+        for ($i = 0; $i < 12; $i++) {
+            $soma += (int) $cnpj[$i] * $pesos[$i];
+        }
+        $resto = ($soma * 10) % 11;
+        if ($resto === 10) $resto = 0;
+        if ($resto !== (int) $cnpj[12]) return false;
+        $pesos = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+        $soma = 0;
+        for ($i = 0; $i < 13; $i++) {
+            $soma += (int) $cnpj[$i] * $pesos[$i];
+        }
+        $resto = ($soma * 10) % 11;
+        if ($resto === 10) $resto = 0;
+        return $resto === (int) $cnpj[13];
+    }
+
     public function index(Request $request)
     {
         $user = $request->attributes->get('user');
@@ -65,9 +120,14 @@ class ClienteController extends Controller
             $query->where('rota', 'like', "%{$request->rota}%");
         }
 
-        // Ordenação
+        // Ordenação — whitelist para evitar SQL injection
+        $allowedOrderBy = ['razao_social', 'nome_fantasia', 'cpf_cnpj', 'cidade', 'estado', 'rota', 'status'];
         $orderBy = $request->get('order_by', 'razao_social');
-        $orderDir = $request->get('order_dir', 'asc');
+        $orderBy = in_array($orderBy, $allowedOrderBy, true) ? $orderBy : 'razao_social';
+
+        $allowedDir = ['asc', 'desc'];
+        $orderDir = in_array(strtolower($request->get('order_dir', 'asc')), $allowedDir, true) ? strtolower($request->get('order_dir', 'asc')) : 'asc';
+
         $query->orderBy($orderBy, $orderDir);
 
         // Paginação
@@ -112,12 +172,47 @@ class ClienteController extends Controller
     public function store(Request $request)
     {
         $data = $request->all();
-        
+
         if (empty($data['razao_social'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'Razão social é obrigatória'
             ], 422);
+        }
+
+        // Validate CPF/CNPJ if provided
+        if (!empty($data['cpf_cnpj'])) {
+            $cpfCnpj = preg_replace('/[^0-9]/', '', $data['cpf_cnpj']);
+            if (strlen($cpfCnpj) === 11 && !$this->validarCpf($cpfCnpj)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'CPF inválido'
+                ], 422);
+            }
+            if (strlen($cpfCnpj) === 14 && !$this->validarCnpj($cpfCnpj)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'CNPJ inválido'
+                ], 422);
+            }
+        }
+
+        // Validate email if provided
+        if (!empty($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'E-mail inválido'
+            ], 422);
+        }
+
+        // Validate phone format if provided (allow numbers, spaces, parens, dash, plus)
+        foreach (['contato_1', 'contato_2', 'contato_3'] as $campo) {
+            if (!empty($data[$campo]) && !preg_match('/^[\d\s()+\-]+$/', $data[$campo])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Formato de telefone inválido no campo {$campo}"
+                ], 422);
+            }
         }
 
         $id = DB::table('clientes')->insertGetId([
@@ -142,6 +237,8 @@ class ClienteController extends Controller
 
         $cliente = DB::table('clientes')->where('id_cliente', $id)->first();
 
+        AuditService::log($request, 'create', 'clientes', $id, null, $data);
+
         return response()->json([
             'success' => true,
             'message' => 'Cliente criado com sucesso',
@@ -152,7 +249,7 @@ class ClienteController extends Controller
     public function update(Request $request, $id)
     {
         $cliente = DB::table('clientes')->where('id_cliente', $id)->first();
-        
+
         if (!$cliente) {
             return response()->json([
                 'success' => false,
@@ -161,7 +258,42 @@ class ClienteController extends Controller
         }
 
         $data = $request->all();
-        
+
+        // Validate CPF/CNPJ if being changed
+        if (isset($data['cpf_cnpj']) && !empty($data['cpf_cnpj'])) {
+            $cpfCnpj = preg_replace('/[^0-9]/', '', $data['cpf_cnpj']);
+            if (strlen($cpfCnpj) === 11 && !$this->validarCpf($cpfCnpj)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'CPF inválido'
+                ], 422);
+            }
+            if (strlen($cpfCnpj) === 14 && !$this->validarCnpj($cpfCnpj)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'CNPJ inválido'
+                ], 422);
+            }
+        }
+
+        // Validate email if being changed
+        if (isset($data['email']) && !empty($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'E-mail inválido'
+            ], 422);
+        }
+
+        // Validate phone format
+        foreach (['contato_1', 'contato_2', 'contato_3'] as $campo) {
+            if (isset($data[$campo]) && !empty($data[$campo]) && !preg_match('/^[\d\s()+\-]+$/', $data[$campo])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Formato de telefone inválido no campo {$campo}"
+                ], 422);
+            }
+        }
+
         $updateFields = [];
         $allowedFields = [
             'razao_social', 'nome_fantasia', 'responsavel', 'cpf_cnpj',
@@ -169,18 +301,20 @@ class ClienteController extends Controller
             'bairro', 'cidade', 'estado', 'cep',
             'contato_1', 'contato_2', 'contato_3', 'rota', 'status'
         ];
-        
+
         foreach ($allowedFields as $field) {
             if (isset($data[$field])) {
                 $updateFields[$field] = $data[$field];
             }
         }
-        
+
         if (!empty($updateFields)) {
             DB::table('clientes')->where('id_cliente', $id)->update($updateFields);
         }
 
         $cliente = DB::table('clientes')->where('id_cliente', $id)->first();
+
+        AuditService::log($request, 'update', 'clientes', $id, (array) $cliente, $updateFields);
 
         return response()->json([
             'success' => true,
@@ -189,7 +323,7 @@ class ClienteController extends Controller
         ]);
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         $cliente = DB::table('clientes')->where('id_cliente', $id)->first();
         
@@ -201,6 +335,8 @@ class ClienteController extends Controller
         }
 
         DB::table('clientes')->where('id_cliente', $id)->delete();
+
+        AuditService::log($request, 'delete', 'clientes', $id, (array) $cliente);
 
         return response()->json([
             'success' => true,

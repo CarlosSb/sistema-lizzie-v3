@@ -37,6 +37,14 @@ class DashboardController extends Controller
         $clientesInativos = DB::table('clientes')->where('status', 0)->count();
         
         $produtosDisponiveis = DB::table('produtos')->where('status', 1)->count();
+
+        // Aniversariantes do dia
+        $aniversariantes = DB::table('clientes')
+            ->select('id_cliente', 'responsavel', 'razao_social', 'data_nascimento', 'contato_1')
+            ->where('status', 1)
+            ->whereRaw('DAY(data_nascimento) = DAY(CURDATE())')
+            ->whereRaw('MONTH(data_nascimento) = MONTH(CURDATE())')
+            ->get();
         
         $totalVendas = DB::table('pedidos')->where('status', 4)->sum('total_pedido') ?? 0;
         
@@ -106,6 +114,10 @@ class DashboardController extends Controller
                 ],
                 'produtos' => [
                     'disponiveis' => $produtosDisponiveis
+                ],
+                'aniversariantes' => [
+                    'hoje' => $aniversariantes,
+                    'quantidade' => count($aniversariantes)
                 ],
                 'vendas' => [
                     'total_geral' => $totalVendas,

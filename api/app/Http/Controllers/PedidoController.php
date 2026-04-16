@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\PedidoService;
+use App\Services\AuditService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -68,9 +69,14 @@ class PedidoController extends Controller
             $query->where('pedidos.total_pedido', '<=', $request->max_total);
         }
 
-        // Ordenação
+        // Ordenação — whitelist para evitar SQL injection
+        $allowedOrderBy = ['data_pedido', 'total_pedido', 'id_pedido', 'razao_social', 'nome_vendedor'];
         $orderBy = $request->get('order_by', 'data_pedido');
-        $orderDir = $request->get('order_dir', 'desc');
+        $orderBy = in_array($orderBy, $allowedOrderBy, true) ? $orderBy : 'data_pedido';
+
+        $allowedDir = ['asc', 'desc'];
+        $orderDir = in_array(strtolower($request->get('order_dir', 'desc')), $allowedDir, true) ? strtolower($request->get('order_dir', 'desc')) : 'desc';
+
         $query->orderBy("pedidos.{$orderBy}", $orderDir);
 
         // Paginação
@@ -146,7 +152,7 @@ class PedidoController extends Controller
 
         $pedido = $this->pedidoService->criarPedido($data);
 
-        $alertaId = DB::table('alertas')->insertGetId([
+        DB::table('alertas')->insertGetId([
             'tipo' => 'pedido_novo',
             'titulo' => 'Novo Pedido #' . $pedido['id_pedido'],
             'mensagem' => 'Novo pedido criado',
@@ -154,6 +160,8 @@ class PedidoController extends Controller
             'lido' => 0,
             'data_alerta' => date('Y-m-d H:i:s')
         ]);
+
+        AuditService::log($request, 'create', 'pedidos', $pedido['id_pedido'], null, $data);
 
         return response()->json([
             'success' => true,

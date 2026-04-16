@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\AuditService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -15,7 +16,7 @@ class EstoqueController extends Controller
                 'produtos.produto',
                 'produtos.referencia',
                 'produtos.valor_unt_norde',
-                DB::raw('COALESCE(SUM(item_estoques.tam_p + item_estoques.tam_m + item_estoques.tam_g + item_estoques.tam_u + item_estoques.tam_rn + item_estoques.ida_1 + item_estoques.ida_2 + item_estoques.ida_3 + item_estoques.ida_4 + item_estoques.ida_6 + item_estoques.ida_8), 0) as quantidade_total')
+                DB::raw('COALESCE(SUM(item_estoques.tam_p + item_estoques.tam_m + item_estoques.tam_g + item_estoques.tam_u + item_estoques.tam_rn + item_estoques.ida_1 + item_estoques.ida_2 + item_estoques.ida_3 + item_estoques.ida_4 + item_estoques.ida_6 + item_estoques.ida_8 + item_estoques.ida_10 + item_estoques.ida_12), 0) as quantidade_total')
             )
             ->leftJoin('item_estoques', 'produtos.id_produto', '=', 'item_estoques.estoque_id')
             ->groupBy('produtos.id_produto');
@@ -76,42 +77,55 @@ class EstoqueController extends Controller
     public function registrarEntrada(Request $request)
     {
         $data = $request->all();
-        
+
         if (empty($data['id_produto'])) {
             return response()->json(['success' => false, 'message' => 'Produto obrigatório'], 422);
         }
 
-        $estoqueId = DB::table('estoques')->insertGetId([
-            'ref_produto' => $data['id_produto'],
-            'created_at' => date('Y-m-d H:i:s')
-        ]);
+        DB::beginTransaction();
+        try {
+            $estoqueId = DB::table('estoques')->insertGetId([
+                'ref_produto' => $data['id_produto'],
+                'created_at' => date('Y-m-d H:i:s')
+            ]);
 
-        DB::table('item_estoques')->insert([
-            'estoque_id' => $estoqueId,
-            'tam_p' => $data['tam_p'] ?? 0,
-            'tam_m' => $data['tam_m'] ?? 0,
-            'tam_g' => $data['tam_g'] ?? 0,
-            'tam_u' => $data['tam_u'] ?? 0,
-            'tam_rn' => $data['tam_rn'] ?? 0,
-            'ida_1' => $data['ida_1'] ?? 0,
-            'ida_2' => $data['ida_2'] ?? 0,
-            'ida_3' => $data['ida_3'] ?? 0,
-            'ida_4' => $data['ida_4'] ?? 0,
-            'ida_6' => $data['ida_6'] ?? 0,
-            'ida_8' => $data['ida_8'] ?? 0,
-            'estampa' => $data['estampa'] ?? 0,
-            'estampa_lisa' => $data['estampa_lisa'] ?? 0,
-            'lisa' => $data['lisa'] ?? 0,
-            'tipo_entrada' => 'entrada',
-            'observacao' => $data['observacao'] ?? null,
-            'created_at' => date('Y-m-d H:i:s')
-        ]);
+            DB::table('item_estoques')->insert([
+                'estoque_id' => $estoqueId,
+                'tam_p' => $data['tam_p'] ?? 0,
+                'tam_m' => $data['tam_m'] ?? 0,
+                'tam_g' => $data['tam_g'] ?? 0,
+                'tam_u' => $data['tam_u'] ?? 0,
+                'tam_rn' => $data['tam_rn'] ?? 0,
+                'ida_1' => $data['ida_1'] ?? 0,
+                'ida_2' => $data['ida_2'] ?? 0,
+                'ida_3' => $data['ida_3'] ?? 0,
+                'ida_4' => $data['ida_4'] ?? 0,
+                'ida_6' => $data['ida_6'] ?? 0,
+                'ida_8' => $data['ida_8'] ?? 0,
+                'estampa' => $data['estampa'] ?? 0,
+                'estampa_lisa' => $data['estampa_lisa'] ?? 0,
+                'lisa' => $data['lisa'] ?? 0,
+                'tipo_entrada' => 'entrada',
+                'observacao' => $data['observacao'] ?? null,
+                'created_at' => date('Y-m-d H:i:s')
+            ]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Entrada registrada com sucesso',
-            'data' => ['id' => $estoqueId]
-        ]);
+            DB::commit();
+
+            AuditService::log($request, 'entrada', 'estoques', $estoqueId, null, $data);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Entrada registrada com sucesso',
+                'data' => ['id' => $estoqueId]
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao registrar entrada: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function reservar(Request $request)
@@ -234,6 +248,16 @@ class EstoqueController extends Controller
                     'tam_p' => max(0, $estoque->tam_p - ($item->tam_p ?? 0)),
                     'tam_m' => max(0, $estoque->tam_m - ($item->tam_m ?? 0)),
                     'tam_g' => max(0, $estoque->tam_g - ($item->tam_g ?? 0)),
+                    'tam_u' => max(0, $estoque->tam_u - ($item->tam_u ?? 0)),
+                    'tam_rn' => max(0, $estoque->tam_rn - ($item->tam_rn ?? 0)),
+                    'ida_1' => max(0, $estoque->ida_1 - ($item->ida_1 ?? 0)),
+                    'ida_2' => max(0, $estoque->ida_2 - ($item->ida_2 ?? 0)),
+                    'ida_3' => max(0, $estoque->ida_3 - ($item->ida_3 ?? 0)),
+                    'ida_4' => max(0, $estoque->ida_4 - ($item->ida_4 ?? 0)),
+                    'ida_6' => max(0, $estoque->ida_6 - ($item->ida_6 ?? 0)),
+                    'ida_8' => max(0, $estoque->ida_8 - ($item->ida_8 ?? 0)),
+                    'ida_10' => max(0, $estoque->ida_10 - ($item->ida_10 ?? 0)),
+                    'ida_12' => max(0, $estoque->ida_12 - ($item->ida_12 ?? 0)),
                 ]);
 
                 DB::table('reg_estoques')->insert([
@@ -296,19 +320,21 @@ class EstoqueController extends Controller
             return response()->json(['success' => false, 'message' => 'Estoque não encontrado para este produto'], 404);
         }
 
-        $saidaTotal = ($data['tam_p'] ?? 0) + ($data['tam_m'] ?? 0) + 
+        $saidaTotal = ($data['tam_p'] ?? 0) + ($data['tam_m'] ?? 0) +
                       ($data['tam_g'] ?? 0) + ($data['tam_u'] ?? 0) + ($data['tam_rn'] ?? 0) +
-                      ($data['ida_1'] ?? 0) + ($data['ida_2'] ?? 0) + ($data['ida_3'] ?? 0) + 
-                      ($data['ida_4'] ?? 0) + ($data['ida_6'] ?? 0) + ($data['ida_8'] ?? 0);
+                      ($data['ida_1'] ?? 0) + ($data['ida_2'] ?? 0) + ($data['ida_3'] ?? 0) +
+                      ($data['ida_4'] ?? 0) + ($data['ida_6'] ?? 0) + ($data['ida_8'] ?? 0) +
+                      ($data['ida_10'] ?? 0) + ($data['ida_12'] ?? 0);
 
         if ($saidaTotal <= 0) {
             return response()->json(['success' => false, 'message' => 'Quantidade de saída deve ser maior que zero'], 422);
         }
 
-        $estoqueAtualTotal = $estoqueAtual->tam_p + $estoqueAtual->tam_m + 
+        $estoqueAtualTotal = $estoqueAtual->tam_p + $estoqueAtual->tam_m +
                             $estoqueAtual->tam_g + $estoqueAtual->tam_u + $estoqueAtual->tam_rn +
-                            $estoqueAtual->ida_1 + $estoqueAtual->ida_2 + $estoqueAtual->ida_3 + 
-                            $estoqueAtual->ida_4 + $estoqueAtual->ida_6 + $estoqueAtual->ida_8;
+                            $estoqueAtual->ida_1 + $estoqueAtual->ida_2 + $estoqueAtual->ida_3 +
+                            $estoqueAtual->ida_4 + $estoqueAtual->ida_6 + $estoqueAtual->ida_8 +
+                            ($estoqueAtual->ida_10 ?? 0) + ($estoqueAtual->ida_12 ?? 0);
 
         if ($saidaTotal > $estoqueAtualTotal) {
             return response()->json([
@@ -329,6 +355,8 @@ class EstoqueController extends Controller
             'ida_4' => max(0, $estoqueAtual->ida_4 - ($data['ida_4'] ?? 0)),
             'ida_6' => max(0, $estoqueAtual->ida_6 - ($data['ida_6'] ?? 0)),
             'ida_8' => max(0, $estoqueAtual->ida_8 - ($data['ida_8'] ?? 0)),
+            'ida_10' => max(0, $estoqueAtual->ida_10 - ($data['ida_10'] ?? 0)),
+            'ida_12' => max(0, $estoqueAtual->ida_12 - ($data['ida_12'] ?? 0)),
         ];
 
         DB::beginTransaction();
@@ -353,6 +381,8 @@ class EstoqueController extends Controller
             ]);
 
             DB::commit();
+
+            AuditService::log($request, 'saida', 'estoques', $estoqueAtual->id, (array) $estoqueAtual, $data);
 
             return response()->json([
                 'success' => true,
@@ -391,6 +421,16 @@ class EstoqueController extends Controller
                     'tam_p' => $estoque->tam_p + ($item->tam_p ?? 0),
                     'tam_m' => $estoque->tam_m + ($item->tam_m ?? 0),
                     'tam_g' => $estoque->tam_g + ($item->tam_g ?? 0),
+                    'tam_u' => $estoque->tam_u + ($item->tam_u ?? 0),
+                    'tam_rn' => $estoque->tam_rn + ($item->tam_rn ?? 0),
+                    'ida_1' => $estoque->ida_1 + ($item->ida_1 ?? 0),
+                    'ida_2' => $estoque->ida_2 + ($item->ida_2 ?? 0),
+                    'ida_3' => $estoque->ida_3 + ($item->ida_3 ?? 0),
+                    'ida_4' => $estoque->ida_4 + ($item->ida_4 ?? 0),
+                    'ida_6' => $estoque->ida_6 + ($item->ida_6 ?? 0),
+                    'ida_8' => $estoque->ida_8 + ($item->ida_8 ?? 0),
+                    'ida_10' => $estoque->ida_10 + ($item->ida_10 ?? 0),
+                    'ida_12' => $estoque->ida_12 + ($item->ida_12 ?? 0),
                 ]);
 
                 DB::table('reg_estoques')->insert([
@@ -416,7 +456,7 @@ class EstoqueController extends Controller
                 'produtos.id_produto',
                 'produtos.produto',
                 'produtos.referencia',
-                DB::raw('COALESCE(SUM(item_estoques.tam_p + item_estoques.tam_m + item_estoques.tam_g + item_estoques.tam_u + item_estoques.tam_rn + item_estoques.ida_1 + item_estoques.ida_2 + item_estoques.ida_3 + item_estoques.ida_4 + item_estoques.ida_6 + item_estoques.ida_8), 0) as quantidade_total')
+                DB::raw('COALESCE(SUM(item_estoques.tam_p + item_estoques.tam_m + item_estoques.tam_g + item_estoques.tam_u + item_estoques.tam_rn + item_estoques.ida_1 + item_estoques.ida_2 + item_estoques.ida_3 + item_estoques.ida_4 + item_estoques.ida_6 + item_estoques.ida_8 + item_estoques.ida_10 + item_estoques.ida_12), 0) as quantidade_total')
             )
             ->leftJoin('item_estoques', 'produtos.id_produto', '=', 'item_estoques.estoque_id')
             ->groupBy('produtos.id_produto')
@@ -436,7 +476,7 @@ class EstoqueController extends Controller
         $totalProdutos = DB::table('produtos')->count();
         
         $estoqueTotal = DB::table('item_estoques')
-            ->select(DB::raw('COALESCE(SUM(tam_p + tam_m + tam_g + tam_u + tam_rn + ida_1 + ida_2 + ida_3 + ida_4 + ida_6 + ida_8), 0) as total'))
+            ->select(DB::raw('COALESCE(SUM(tam_p + tam_m + tam_g + tam_u + tam_rn + ida_1 + ida_2 + ida_3 + ida_4 + ida_6 + ida_8 + ida_10 + ida_12), 0) as total'))
             ->first();
 
         $produtosBaixos = DB::table('produtos')

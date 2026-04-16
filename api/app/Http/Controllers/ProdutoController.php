@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\AuditService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -32,9 +33,14 @@ class ProdutoController extends Controller
             $query->where('valor_unt_norde', '<=', $request->preco_max);
         }
 
-        // Ordenação
+        // Ordenação — whitelist para evitar SQL injection
+        $allowedOrderBy = ['produto', 'referencia', 'valor_unt_norde', 'valor_unt_norte', 'status'];
         $orderBy = $request->get('order_by', 'produto');
-        $orderDir = $request->get('order_dir', 'asc');
+        $orderBy = in_array($orderBy, $allowedOrderBy, true) ? $orderBy : 'produto';
+
+        $allowedDir = ['asc', 'desc'];
+        $orderDir = in_array(strtolower($request->get('order_dir', 'asc')), $allowedDir, true) ? strtolower($request->get('order_dir', 'asc')) : 'asc';
+
         $query->orderBy($orderBy, $orderDir);
 
         // Paginação
@@ -97,6 +103,8 @@ class ProdutoController extends Controller
 
         $produto = DB::table('produtos')->where('id_produto', $id)->first();
 
+        AuditService::log($request, 'create', 'produtos', $id, null, $data);
+
         return response()->json([
             'success' => true,
             'message' => 'Produto criado com sucesso',
@@ -132,6 +140,8 @@ class ProdutoController extends Controller
 
         $produto = DB::table('produtos')->where('id_produto', $id)->first();
 
+        AuditService::log($request, 'update', 'produtos', $id, (array) $produto, $updateFields);
+
         return response()->json([
             'success' => true,
             'message' => 'Produto atualizado com sucesso',
@@ -139,7 +149,7 @@ class ProdutoController extends Controller
         ]);
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         $produto = DB::table('produtos')->where('id_produto', $id)->first();
         
@@ -151,6 +161,8 @@ class ProdutoController extends Controller
         }
 
         DB::table('produtos')->where('id_produto', $id)->delete();
+
+        AuditService::log($request, 'delete', 'produtos', $id, (array) $produto);
 
         return response()->json([
             'success' => true,

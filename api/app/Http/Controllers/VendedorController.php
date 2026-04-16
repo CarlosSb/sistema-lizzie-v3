@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Vendedor;
+use App\Services\AuditService;
 use Illuminate\Http\Request;
 
 class VendedorController extends Controller
@@ -47,6 +48,8 @@ class VendedorController extends Controller
 
         $vendedor = Vendedor::create($validated);
 
+        AuditService::log($request, 'create', 'vendedores', $vendedor->id_vendedor, null, $validated);
+
         return response()->json([
             'success' => true,
             'message' => 'Vendedor criado com sucesso',
@@ -57,6 +60,7 @@ class VendedorController extends Controller
     public function update(Request $request, $id)
     {
         $vendedor = Vendedor::findOrFail($id);
+        $oldData = $vendedor->toArray();
 
         $validated = $request->validate([
             'nome_vendedor' => 'sometimes|string|max:255',
@@ -69,6 +73,8 @@ class VendedorController extends Controller
 
         $vendedor->update($validated);
 
+        AuditService::log($request, 'update', 'vendedores', $vendedor->id_vendedor, $oldData, $validated);
+
         return response()->json([
             'success' => true,
             'message' => 'Vendedor atualizado com sucesso',
@@ -76,10 +82,13 @@ class VendedorController extends Controller
         ]);
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         $vendedor = Vendedor::findOrFail($id);
+        $oldData = $vendedor->toArray();
         $vendedor->delete();
+
+        AuditService::log($request, 'delete', 'vendedores', $id, $oldData);
 
         return response()->json([
             'success' => true,
