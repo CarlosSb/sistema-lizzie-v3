@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { Plus, Search, Users, MoreHorizontal, User, Trash2, Loader2, AlertCircle } from 'lucide-vue-next'
+import { computed, ref, onMounted, watch } from 'vue'
+import { Plus, Search, MoreHorizontal, User, Trash2, Loader2, AlertCircle } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -35,12 +42,19 @@ const vendedores = ref<Vendedor[]>([])
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
 
+const search = ref('')
+const statusFilter = ref<'all' | '1' | '0'>('all')
+
 const fetchVendedores = async () => {
   isLoading.value = true
   errorMessage.value = null
   try {
-    const response = await apiClient.get('/api/vendedores')
-    vendedores.value = response.data
+    const response = await apiClient.get('/api/vendedores', {
+      params: {
+        status: statusFilter.value === 'all' ? undefined : Number(statusFilter.value),
+      },
+    })
+    vendedores.value = response.data?.data || []
   } catch (error: any) {
     errorMessage.value = 'Erro ao carregar vendedores.'
     console.error('Failed to fetch vendedores:', error)
@@ -50,6 +64,19 @@ const fetchVendedores = async () => {
 }
 
 onMounted(fetchVendedores)
+
+watch(statusFilter, () => {
+  fetchVendedores()
+})
+
+const filteredVendedores = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return vendedores.value
+  return vendedores.value.filter(v =>
+    (v.nome_vendedor || '').toLowerCase().includes(q) ||
+    (v.usuario || '').toLowerCase().includes(q)
+  )
+})
 
 const getStatusClass = (status: number) => {
   return status === 1 
@@ -73,13 +100,28 @@ const getStatusClass = (status: number) => {
     </div>
 
     <!-- Toolbar -->
-    <div class="relative flex-1 group w-full text-left">
+    <div class="flex flex-col md:flex-row gap-4 items-center">
+      <div class="relative flex-1 group w-full text-left">
         <Search class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors z-10" />
         <Input 
           type="text" 
           placeholder="Pesquisar vendedor por nome ou usuário..." 
           class="w-full bg-card border pl-11 h-12 text-sm font-medium focus-visible:ring-primary rounded-xl" 
+          v-model="search"
+          :disabled="isLoading"
         />
+      </div>
+
+      <Select v-model="statusFilter">
+        <SelectTrigger class="w-full md:w-56 bg-card border h-12 rounded-xl text-xs font-semibold focus:ring-primary">
+          <SelectValue placeholder="STATUS" />
+        </SelectTrigger>
+        <SelectContent class="rounded-xl border shadow-xl">
+          <SelectItem value="all" class="text-xs font-bold text-left">TODOS</SelectItem>
+          <SelectItem value="1" class="text-xs font-bold text-left">ATIVOS</SelectItem>
+          <SelectItem value="0" class="text-xs font-bold text-left">INATIVOS</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
 
     <!-- Table -->
@@ -104,7 +146,7 @@ const getStatusClass = (status: number) => {
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow v-for="vendedor in vendedores" :key="vendedor.id_vendedor" class="hover:bg-accent/30 transition-colors group">
+          <TableRow v-for="vendedor in filteredVendedores" :key="vendedor.id_vendedor" class="hover:bg-accent/30 transition-colors group">
             <TableCell class="py-5 px-8 font-bold text-sm">#{{ vendedor.id_vendedor }}</TableCell>
             <TableCell class="py-5">
               <div class="flex items-center gap-3 text-left">
@@ -143,7 +185,7 @@ const getStatusClass = (status: number) => {
               </DropdownMenu>
             </TableCell>
           </TableRow>
-          <TableRow v-if="vendedores.length === 0">
+          <TableRow v-if="filteredVendedores.length === 0">
               <TableCell colspan="6" class="text-center py-10 text-muted-foreground">Nenhum vendedor encontrado.</TableCell>
           </TableRow>
         </TableBody>

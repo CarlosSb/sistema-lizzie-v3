@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, Search, Filter, ShoppingBag, MoreHorizontal, FileText, Trash2, Loader2, AlertCircle } from 'lucide-vue-next'
+import { watchDebounced } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import PaginationBar from '@/components/PaginationBar.vue'
 import {
   Select,
   SelectContent,
@@ -33,12 +35,12 @@ import apiClient from '@/lib/axios'
 
 interface Pedido {
   id_pedido: number
-  razao_social: string // Assuming client name from API
-  nome_fantasia: string // Assuming client name from API
+  razao_social: string | null
+  nome_vendedor: string | null
   total_pedido: number
   status: number // 1: ABERTO, 2: PENDENTE, 3: CANCELADO, 4: CONCLUÍDO
   data_pedido: string // Assuming a date string
-  items_count: number // Assuming API returns items count
+  items_count?: number
 }
 
 const pedidos = ref<Pedido[]>([])
@@ -46,16 +48,47 @@ const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
 const router = useRouter() // Add router instance
 
+const search = ref('')
+const statusFilter = ref<'all' | '1' | '2' | '3' | '4'>('all')
+const page = ref(1)
+const perPage = ref(15)
+const pagination = ref<{ current_page: number; last_page: number; per_page: number; total: number } | null>(null)
+
 const goToPedidoDetalhes = (id: number) => {
   router.push({ name: 'pedido-detalhes', params: { id: id.toString() } })
 }
+
+const normalizePedidos = (payload: any): Pedido[] => {
+  const list = Array.isArray(payload) ? payload : []
+  return list.map((p: any) => ({
+    id_pedido: Number(p?.id_pedido),
+    razao_social: p?.razao_social ?? null,
+    nome_vendedor: p?.nome_vendedor ?? null,
+    total_pedido: Number(p?.total_pedido) || 0,
+    status: Number(p?.status) || 0,
+    data_pedido: String(p?.data_pedido ?? ''),
+    items_count: p?.items_count !== undefined ? Number(p.items_count) : undefined,
+  }))
+}
+
+const formatMoney = (value: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0)
 
 const fetchPedidos = async () => {
   isLoading.value = true
   errorMessage.value = null
   try {
-    const response = await apiClient.get('/api/pedidos')
-    pedidos.value = response.data
+    const response = await apiClient.get('/api/pedidos', {
+      params: {
+        search: search.value || undefined,
+        status: statusFilter.value === 'all' ? undefined : Number(statusFilter.value),
+        page: page.value,
+        per_page: perPage.value,
+      },
+    })
+    const data = response.data?.data
+    pedidos.value = normalizePedidos(data)
+    pagination.value = response.data?.pagination || null
   } catch (error: any) {
     errorMessage.value = 'Erro ao carregar pedidos.'
     console.error('Failed to fetch pedidos:', error)
@@ -65,6 +98,30 @@ const fetchPedidos = async () => {
 }
 
 onMounted(fetchPedidos)
+
+watchDebounced(
+  search,
+  () => {
+    if (page.value === 1) {
+      fetchPedidos()
+    } else {
+      page.value = 1
+    }
+  },
+  { debounce: 350, maxWait: 1200 }
+)
+
+watch(statusFilter, () => {
+  if (page.value === 1) {
+    fetchPedidos()
+  } else {
+    page.value = 1
+  }
+})
+
+watch(page, () => {
+  fetchPedidos()
+})
 
 const getStatusClass = (status: number) => {
   switch (status) {
@@ -109,20 +166,22 @@ const getStatusLabel = (status: number) => {
           type="text" 
           placeholder="Pesquisar pedido ou cliente..." 
           class="w-full bg-card border pl-11 h-12 text-sm font-medium focus-visible:ring-primary rounded-xl" 
+          v-model="search"
+          :disabled="isLoading"
         />
       </div>
       
       <div class="flex gap-3 w-full md:w-auto">
-        <Select>
+        <Select v-model="statusFilter">
           <SelectTrigger class="w-full md:w-56 bg-card border h-12 rounded-xl text-xs font-semibold focus:ring-primary">
             <SelectValue placeholder="TODOS STATUS" />
           </SelectTrigger>
           <SelectContent class="rounded-xl border shadow-xl">
-            <SelectItem value="todos" class="text-xs font-bold text-left">TODOS STATUS</SelectItem>
-            <SelectItem value="aberto" class="text-xs font-bold text-left">ABERTO</SelectItem>
-            <SelectItem value="pendente" class="text-xs font-bold text-left">PENDENTE</SelectItem>
-            <SelectItem value="concluido" class="text-xs font-bold text-left">CONCLUÍDO</SelectItem>
-            <SelectItem value="cancelado" class="text-xs font-bold text-left">CANCELADO</SelectItem>
+            <SelectItem value="all" class="text-xs font-bold text-left">TODOS STATUS</SelectItem>
+            <SelectItem value="1" class="text-xs font-bold text-left">ABERTO</SelectItem>
+            <SelectItem value="2" class="text-xs font-bold text-left">PENDENTE</SelectItem>
+            <SelectItem value="4" class="text-xs font-bold text-left">CONCLUÍDO</SelectItem>
+            <SelectItem value="3" class="text-xs font-bold text-left">CANCELADO</SelectItem>
           </SelectContent>
         </Select>
 
@@ -147,7 +206,12 @@ const getStatusLabel = (status: number) => {
           <TableRow class="hover:bg-transparent">
             <TableHead class="w-[100px] text-xs font-bold uppercase tracking-wider py-5 px-8">ID</TableHead>
             <TableHead class="text-xs font-bold uppercase tracking-wider py-5">Cliente</TableHead>
-            <TableHead class="text-xs font-bold uppercase tracking-wider py-5 text-center">Itens</TableHead>
+            <TableHead class="text-xs font-bold uppercase tracking-wider py-5 text-center">
+            <div class="flex items-center gap-1">
+              <ShoppingBag class="w-3.5 h-3.5" />
+              Itens
+            </div>
+          </TableHead>
             <TableHead class="text-xs font-bold uppercase tracking-wider py-5">Data</TableHead>
             <TableHead class="text-xs font-bold uppercase tracking-wider py-5">Total</TableHead>
             <TableHead class="text-xs font-bold uppercase tracking-wider py-5">Status</TableHead>
@@ -159,13 +223,13 @@ const getStatusLabel = (status: number) => {
             <TableCell class="py-5 px-8 font-bold text-sm">#{{ pedido.id_pedido }}</TableCell>
             <TableCell class="py-5">
               <div class="flex items-center gap-3 text-left">
-                <span class="font-bold text-sm tracking-tight text-foreground/80">{{ pedido.nome_fantasia || pedido.razao_social }}</span>
+                <span class="font-bold text-sm tracking-tight text-foreground/80">{{ pedido.razao_social || '-' }}</span>
                 <ShoppingBag class="w-3.5 h-3.5 text-primary opacity-0 group-hover:opacity-100 transition-all" />
               </div>
             </TableCell>
-            <TableCell class="py-5 text-center font-bold text-xs text-muted-foreground">{{ pedido.items_count }}</TableCell>
+            <TableCell class="py-5 text-center font-bold text-xs text-muted-foreground">{{ pedido.items_count ?? '-' }}</TableCell>
             <TableCell class="py-5 text-xs font-semibold text-muted-foreground">{{ pedido.data_pedido }}</TableCell>
-            <TableCell class="py-5 font-bold text-base text-primary">R$ {{ pedido.total_pedido.toFixed(2).replace('.', ',') }}</TableCell>
+            <TableCell class="py-5 pr-6 font-bold text-base text-primary">{{ formatMoney(pedido.total_pedido) }}</TableCell>
             <TableCell class="py-5">
               <Badge 
                 variant="outline" 
@@ -185,7 +249,7 @@ const getStatusLabel = (status: number) => {
                   <DropdownMenuLabel class="text-[10px] font-bold uppercase tracking-wider py-2 opacity-50 px-4 text-left">Ações</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem @click="goToPedidoDetalhes(pedido.id_pedido)" class="text-xs font-bold py-2.5 cursor-pointer px-4 text-left">
-                    <FileText class="w-4 h-4 mr-2 opacity-50" />
+                    <FileText class="w-4 h-4 mr-2" />
                     Ver Detalhes
                   </DropdownMenuItem>
                   <DropdownMenuItem class="text-xs font-bold py-2.5 cursor-pointer px-4 text-destructive focus:text-destructive text-left text-left">
@@ -205,14 +269,7 @@ const getStatusLabel = (status: number) => {
 
     <!-- Pagination -->
     <div class="flex justify-center pt-4">
-      <div class="flex gap-2 p-1 bg-card border rounded-xl shadow-sm">
-        <Button v-for="i in 3" :key="i" 
-                :variant="i === 1 ? 'default' : 'ghost'"
-                size="sm"
-                class="w-9 h-9 rounded-lg font-bold text-xs">
-          {{ i }}
-        </Button>
-      </div>
+      <PaginationBar v-model:page="page" :lastPage="pagination?.last_page || 1" :disabled="isLoading" />
     </div>
   </div>
 </template>

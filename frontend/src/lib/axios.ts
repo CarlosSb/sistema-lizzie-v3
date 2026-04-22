@@ -1,53 +1,107 @@
-import axios, { AxiosError } from 'axios'; // Import axios and AxiosError
-import { useAuthStore } from '@/stores/auth'; // Assuming auth store is needed for token
+import axios, { AxiosError } from 'axios'
+import { useAuthStore } from '@/stores/auth'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'; // Set base URL to host:port only
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 const apiClient = axios.create({
-  baseURL: API_BASE_URL, // Base URL is now http://localhost:8000
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
+    Accept: 'application/json',
   },
-});
+})
+
+const isAuthRoute = (url?: string) => {
+  if (!url) return false
+  return url.startsWith('/api/auth/')
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = localStorage.getItem('refresh_token')
+  if (!refreshToken) return null
+
+  const response = await axios.post(
+    `${API_BASE_URL}/api/auth/refresh`,
+    { refresh_token: refreshToken },
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+    }
+  )
+
+  const data = response.data?.data
+  const newAccessToken = data?.access_token as string | undefined
+  const newRefreshToken = data?.refresh_token as string | undefined
+
+  if (newAccessToken) localStorage.setItem('token', newAccessToken)
+  if (newRefreshToken) localStorage.setItem('refresh_token', newRefreshToken)
+
+  try {
+    const authStore = useAuthStore()
+    if (newAccessToken) authStore.token = newAccessToken
+    if (newRefreshToken) authStore.refreshToken = newRefreshToken
+  } catch {
+    // ignore store update if pinia isn't ready
+  }
+
+  return newAccessToken || null
+}
 
 apiClient.interceptors.request.use(
   (config) => {
-    const authStore = useAuthStore();
-    const token = authStore.token; 
-    
-    // Add Authorization header if token exists and it's not a public route (login/refresh)
-    // Routes like /api/auth/login should not have the auth header.
-    // The check for specific URLs might be better handled by router guards or explicit service functions.
-    // For now, checking if the URL path starts with /api/auth or is explicitly public route if meta is set.
-    const isPublicRoute = config.url?.startsWith('/api/auth/');
+    const authStore = useAuthStore()
+    const token = authStore.token
 
-    if (token && !isPublicRoute) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (token && !isAuthRoute(config.url)) {
+      config.headers.Authorization = `Bearer ${token}`
     }
-    
-    // Ensure API prefix is correctly handled. 
-    // If baseURL is http://localhost:8000, requests like /api/clientes are correct.
-    // If baseURL already has /api, requests should be /clientes.
-    // Current setup: baseURL = http://localhost:8000. Request path = /api/clientes. Full URL = http://localhost:8000/api/clientes. This is correct.
-    
-    return config;
+
+    return config
   },
-  (error) => {
-    return Promise.reject(error);
+  (error) => Promise.reject(error)
+)
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const originalRequest: any = error.config
+    const status = error.response?.status
+
+    if (
+      status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !isAuthRoute(originalRequest.url)
+    ) {
+      originalRequest._retry = true
+
+      try {
+        const newToken = await refreshAccessToken()
+        if (!newToken) throw new Error('Refresh token ausente ou inválido')
+
+        originalRequest.headers = originalRequest.headers || {}
+        originalRequest.headers.Authorization = `Bearer ${newToken}`
+        return apiClient(originalRequest)
+      } catch {
+        try {
+          const authStore = useAuthStore()
+          authStore.logout()
+        } catch {
+          localStorage.removeItem('token')
+          localStorage.removeItem('refresh_token')
+          localStorage.removeItem('user')
+        }
+
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login'
+        }
+      }
+    }
+
+    return Promise.reject(error)
   }
-);
+)
 
-// You might also want to add a response interceptor to handle 401 Unauthorized errors
-// apiClient.interceptors.response.use(
-//   (response) => response,
-//   (error) => {
-//     if (axios.isAxiosError(error) && error.response && error.response.status === 401) {
-//       // Handle unauthorized: redirect to login, clear token, etc.
-//       // Example: router.push('/login'); or use authStore.logout()
-//     }
-//     return Promise.reject(error);
-//   }
-// );
-
-export default apiClient;
+export default apiClient

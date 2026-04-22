@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Search, Users, MoreHorizontal, User, Trash2, Loader2, AlertCircle } from 'lucide-vue-next'
+import { Plus, Search, MoreHorizontal, User, Trash2, Loader2, AlertCircle } from 'lucide-vue-next'
+import { watchDebounced } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import PaginationBar from '@/components/PaginationBar.vue'
 import {
   Table,
   TableBody,
@@ -13,6 +15,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,6 +45,12 @@ const clientes = ref<Cliente[]>([])
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
 const router = useRouter() // Initialize router
+
+const search = ref('')
+const statusFilter = ref<number>(1)
+const page = ref(1)
+const perPage = ref(15)
+const pagination = ref<{ current_page: number; last_page: number; per_page: number; total: number } | null>(null)
 
 const goToClienteDetalhes = (id: number) => {
   router.push({ name: 'cliente-detalhes', params: { id: id.toString() } })
@@ -62,8 +77,16 @@ const fetchClientes = async () => {
   isLoading.value = true
   errorMessage.value = null
   try {
-    const response = await apiClient.get('/api/clientes')
-    clientes.value = response.data
+    const response = await apiClient.get('/api/clientes', {
+      params: {
+        search: search.value || undefined,
+        status: statusFilter.value,
+        page: page.value,
+        per_page: perPage.value,
+      },
+    })
+    clientes.value = response.data?.data || []
+    pagination.value = response.data?.pagination || null
   } catch (error: any) {
     errorMessage.value = 'Erro ao carregar clientes.'
     console.error('Failed to fetch clientes:', error)
@@ -73,6 +96,30 @@ const fetchClientes = async () => {
 }
 
 onMounted(fetchClientes)
+
+watchDebounced(
+  search,
+  () => {
+    if (page.value === 1) {
+      fetchClientes()
+    } else {
+      page.value = 1
+    }
+  },
+  { debounce: 350, maxWait: 1200 }
+)
+
+watch(statusFilter, () => {
+  if (page.value === 1) {
+    fetchClientes()
+  } else {
+    page.value = 1
+  }
+})
+
+watch(page, () => {
+  fetchClientes()
+})
 
 const getStatusClass = (status: number) => {
   return status === 1 
@@ -96,13 +143,27 @@ const getStatusClass = (status: number) => {
     </div>
 
     <!-- Toolbar -->
-    <div class="relative flex-1 group w-full text-left">
+    <div class="flex flex-col md:flex-row gap-4 items-center">
+      <div class="relative flex-1 group w-full text-left">
         <Search class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors z-10" />
         <Input 
           type="text" 
           placeholder="Pesquisar cliente por nome ou CPF/CNPJ..." 
           class="w-full bg-card border pl-11 h-12 text-sm font-medium focus-visible:ring-primary rounded-xl" 
+          v-model="search"
+          :disabled="isLoading"
         />
+      </div>
+
+      <Select v-model="statusFilter">
+        <SelectTrigger class="w-full md:w-56 bg-card border h-12 rounded-xl text-xs font-semibold focus:ring-primary">
+          <SelectValue placeholder="STATUS" />
+        </SelectTrigger>
+        <SelectContent class="rounded-xl border shadow-xl">
+          <SelectItem :value="1" class="text-xs font-bold text-left">ATIVOS</SelectItem>
+          <SelectItem :value="0" class="text-xs font-bold text-left">INATIVOS</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
 
     <!-- Table -->
@@ -175,5 +236,9 @@ const getStatusClass = (status: number) => {
         </TableBody>
       </Table>
     </Card>
+
+    <div class="flex justify-center pt-4">
+      <PaginationBar v-model:page="page" :lastPage="pagination?.last_page || 1" :disabled="isLoading" />
+    </div>
   </div>
 </template>

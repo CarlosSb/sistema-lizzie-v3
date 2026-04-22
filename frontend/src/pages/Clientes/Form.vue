@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, Save, Users, Loader2, AlertCircle, CheckCircle, XCircle } from 'lucide-vue-next'
+import { ArrowLeft, Save, Users, Loader2, AlertCircle } from 'lucide-vue-next'
+import axios from 'axios'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Select,
   SelectContent,
@@ -18,37 +19,65 @@ import apiClient from '@/lib/axios'
 // Interfaces
 interface Cliente {
   id_cliente?: number // Optional for create mode
+  razao_social: string
   responsavel: string
-  nome_fantasia: string | null
-  razao_social: string | null
+  nome_fantasia: string
   cpf_cnpj: string
-  email: string | null
-  telefone: string | null
-  endereco: string | null
-  bairro: string | null
-  cidade: string | null
-  estado: string | null
-  cep: string | null
+  email: string
+  endereco: string
+  bairro: string
+  cidade: string
+  estado: string
+  cep: string
+  contato_1: string
+  contato_2: string
+  contato_3: string
+  rota: string
   status: number // 1 for active, 0 for inactive
 }
 
 const route = useRoute()
 const router = useRouter()
 
-const cliente = ref<Cliente>({
+const emptyCliente: Cliente = {
+  razao_social: '',
   responsavel: '',
   nome_fantasia: '',
-  razao_social: '',
   cpf_cnpj: '',
   email: '',
-  telefone: '',
   endereco: '',
   bairro: '',
   cidade: '',
   estado: '',
   cep: '',
+  contato_1: '',
+  contato_2: '',
+  contato_3: '',
+  rota: '',
   status: 1, // Default to active
+}
+
+const normalizeCliente = (data: any): Cliente => ({
+  ...emptyCliente,
+  ...data,
+  razao_social: String(data?.razao_social ?? ''),
+  responsavel: String(data?.responsavel ?? ''),
+  nome_fantasia: String(data?.nome_fantasia ?? ''),
+  cpf_cnpj: String(data?.cpf_cnpj ?? ''),
+  email: String(data?.email ?? ''),
+  endereco: String(data?.endereco ?? ''),
+  bairro: String(data?.bairro ?? ''),
+  cidade: String(data?.cidade ?? ''),
+  estado: String(data?.estado ?? ''),
+  cep: String(data?.cep ?? ''),
+  contato_1: String(data?.contato_1 ?? ''),
+  contato_2: String(data?.contato_2 ?? ''),
+  contato_3: String(data?.contato_3 ?? ''),
+  rota: String(data?.rota ?? ''),
+  status: Number(data?.status ?? 1) || 1,
 })
+
+const cliente = ref<Cliente>({ ...emptyCliente })
 
 const isEditing = computed(() => route.params.id !== undefined)
 const pageTitle = computed(() => isEditing.value ? 'Editar Cliente' : 'Novo Cliente')
@@ -64,9 +93,7 @@ const fetchClienteDetalhes = async () => {
   if (clienteId) {
     try {
       const response = await apiClient.get(`/api/clientes/${clienteId}`)
-      cliente.value = response.data
-      // Ensure status is handled correctly if API returns it as string or other type
-      cliente.value.status = Number(cliente.value.status) || 1;
+      cliente.value = normalizeCliente(response.data?.data)
     } catch (error: any) {
       errorMessage.value = 'Erro ao carregar detalhes do cliente.'
       console.error('Failed to fetch cliente details:', error)
@@ -91,8 +118,8 @@ const saveCliente = async () => {
   errorMessage.value = null
 
   // Basic validation (can be expanded)
-  if (!cliente.value.responsavel || !cliente.value.cpf_cnpj) {
-    errorMessage.value = 'Nome do Responsável e CPF/CNPJ são obrigatórios.'
+  if (!cliente.value.razao_social || !cliente.value.responsavel) {
+    errorMessage.value = 'Razão Social e Responsável são obrigatórios.'
     isSaving.value = false
     return
   }
@@ -107,7 +134,7 @@ const saveCliente = async () => {
     }
     router.push({ name: 'clientes' }) // Redirect to list page on success
   } catch (error: any) {
-    if (apiClient.isAxiosError(error) && error.response) {
+    if (axios.isAxiosError(error) && error.response) {
       const message = error.response.data?.message || error.response.data?.error || 'Erro ao salvar cliente.'
       errorMessage.value = message
     } else {
@@ -152,16 +179,16 @@ const saveCliente = async () => {
         <form v-else @submit.prevent="saveCliente" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <!-- Basic Info -->
           <div class="space-y-1.5">
-            <Label class="text-xs font-semibold text-foreground/70">Nome do Responsável *</Label>
-            <Input v-model="cliente.responsavel" required placeholder="Nome completo do responsável" class="h-11 rounded-lg" />
+            <Label class="text-xs font-semibold text-foreground/70">Razão Social *</Label>
+            <Input v-model="cliente.razao_social" required placeholder="Razão social" class="h-11 rounded-lg" />
           </div>
           <div class="space-y-1.5">
             <Label class="text-xs font-semibold text-foreground/70">Nome Fantasia</Label>
             <Input v-model="cliente.nome_fantasia" placeholder="Nome fantasia (opcional)" class="h-11 rounded-lg" />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-xs font-semibold text-foreground/70">Razão Social</Label>
-            <Input v-model="cliente.razao_social" placeholder="Razão social (opcional)" class="h-11 rounded-lg" />
+            <Label class="text-xs font-semibold text-foreground/70">Responsável *</Label>
+            <Input v-model="cliente.responsavel" required placeholder="Nome completo do responsável" class="h-11 rounded-lg" />
           </div>
 
           <!-- Identification -->
@@ -174,8 +201,8 @@ const saveCliente = async () => {
             <Input type="email" v-model="cliente.email" placeholder="email@exemplo.com" class="h-11 rounded-lg" />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-xs font-semibold text-foreground/70">Telefone</Label>
-            <Input v-model="cliente.telefone" placeholder="(XX) XXXXX-XXXX" class="h-11 rounded-lg" />
+            <Label class="text-xs font-semibold text-foreground/70">Contato 1</Label>
+            <Input v-model="cliente.contato_1" placeholder="(XX) XXXXX-XXXX" class="h-11 rounded-lg" />
           </div>
 
           <!-- Address -->
@@ -198,6 +225,18 @@ const saveCliente = async () => {
           <div class="space-y-1.5">
             <Label class="text-xs font-semibold text-foreground/70">CEP</Label>
             <Input v-model="cliente.cep" placeholder="00000-000" class="h-11 rounded-lg" />
+          </div>
+          <div class="space-y-1.5">
+            <Label class="text-xs font-semibold text-foreground/70">Contato 2</Label>
+            <Input v-model="cliente.contato_2" placeholder="(XX) XXXXX-XXXX" class="h-11 rounded-lg" />
+          </div>
+          <div class="space-y-1.5">
+            <Label class="text-xs font-semibold text-foreground/70">Contato 3</Label>
+            <Input v-model="cliente.contato_3" placeholder="(XX) XXXXX-XXXX" class="h-11 rounded-lg" />
+          </div>
+          <div class="space-y-1.5">
+            <Label class="text-xs font-semibold text-foreground/70">Rota</Label>
+            <Input v-model="cliente.rota" placeholder="Ex: Centro" class="h-11 rounded-lg" />
           </div>
 
           <!-- Status -->

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Package, Loader2, AlertCircle } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import apiClient from '@/lib/axios'
 
@@ -31,9 +32,8 @@ const fetchProdutoDetalhes = async () => {
       throw new Error('ID do produto não fornecido.')
     }
     const response = await apiClient.get(`/api/produtos/${produtoId}`)
-    // Assuming payload is nested in 'data' based on user's feedback about consistent structure
-    produto.value = response.data?.data?.produto || response.data?.produto || response.data
-    if (!produto.value) throw new Error("Formato de resposta inesperado");
+    produto.value = response.data?.data || null
+    if (!produto.value) throw new Error('Formato de resposta inesperado')
   } catch (error: any) {
     errorMessage.value = 'Erro ao carregar detalhes do produto.'
     console.error('Failed to fetch produto details:', error)
@@ -50,6 +50,12 @@ const getStatusLabel = (status: number) => {
     case 0: return 'Inativo'
     default: return 'Desconhecido'
   }
+}
+
+const getStatusClass = (status: number) => {
+  return status === 1
+    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-200 dark:border-emerald-500/30'
+    : 'bg-rose-500/10 text-rose-600 border-rose-200 dark:border-rose-500/30'
 }
 
 const formatCurrency = (value: string | number) => {
@@ -99,7 +105,7 @@ const formatCurrency = (value: string | number) => {
         </CardTitle>
         <CardDescription class="text-xs font-medium mt-1">Informações detalhadas do produto</CardDescription>
       </CardHeader>
-      <CardContent class="p-8 grid grid-cols-1 lg:grid-consts-2 gap-6">
+      <CardContent class="p-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div class="space-y-3">
           <p class="text-xs font-semibold text-muted-foreground">Nome do Produto</p>
           <p class="font-bold text-sm">{{ produto.produto }}</p>

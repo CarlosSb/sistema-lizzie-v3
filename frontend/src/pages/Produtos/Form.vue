@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ArrowLeft, Package, Save, Loader2, AlertCircle, Pencil } from 'lucide-vue-next'
+import { ArrowLeft, Package, Save, Loader2, AlertCircle } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Select,
   SelectContent,
@@ -51,10 +51,8 @@ const fetchProdutoDetalhes = async () => {
     try {
       // Assume API endpoint for getting single product details is GET /api/produtos/{id}
       const response = await apiClient.get(`/api/produtos/${produtoId}`)
-      // Assuming response structure is { success: true, data: { produto: {...} } } or similar
-      // Adjust based on actual API response structure, prioritizing nested data if user confirmed pattern
-      produto.value = response.data?.data?.produto || response.data?.produto || response.data
-      if (!produto.value) throw new Error("Formato de resposta inesperado");
+      produto.value = response.data?.data
+      if (!produto.value) throw new Error('Formato de resposta inesperado')
       // Ensure status is handled correctly if API returns it as string or other type
       produto.value.status = Number(produto.value.status) || 1;
     } catch (error: any) {

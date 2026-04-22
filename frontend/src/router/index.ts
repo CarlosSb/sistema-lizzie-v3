@@ -20,14 +20,14 @@ const routes = [
         component: () => import('../pages/Pedidos/Lista.vue')
       },
       {
-        path: 'pedidos/:id',
-        name: 'pedido-detalhes',
-        component: () => import('../pages/Pedidos/Detalhes.vue')
-      },
-      {
         path: 'pedidos/novo',
         name: 'pedido-novo',
         component: () => import('../pages/Pedidos/Form.vue')
+      },
+      {
+        path: 'pedidos/:id',
+        name: 'pedido-detalhes',
+        component: () => import('../pages/Pedidos/Detalhes.vue')
       },
       {
         path: 'clientes',
@@ -43,6 +43,11 @@ const routes = [
         path: 'clientes/editar/:id',
         name: 'cliente-editar',
         component: () => import('../pages/Clientes/Form.vue')
+      },
+      {
+        path: 'clientes/:id',
+        name: 'cliente-detalhes',
+        component: () => import('../pages/Clientes/Detalhes.vue')
       },
       {
         path: 'produtos',
@@ -84,7 +89,7 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore() // Access the auth store
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {

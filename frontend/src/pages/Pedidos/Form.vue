@@ -1,21 +1,23 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { 
   ArrowLeft, 
-  Search, 
   User, 
-  ShoppingCart, 
+  Package,
   Save, 
   Plus, 
+  Pencil,
   Trash2, 
-  Loader2, 
-  AlertCircle 
+  Loader2,
+  AlertCircle
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
 import {
   Select,
   SelectContent,
@@ -32,11 +34,13 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import apiClient from '@/lib/axios'
+import { useAuthStore } from '@/stores/auth'
 
 interface Cliente {
   id_cliente: number
   responsavel: string
-  nome_fantasia: string
+  razao_social: string | null
+  nome_fantasia: string | null
   cpf_cnpj: string
   status: number
 }
@@ -45,8 +49,8 @@ interface Produto {
   id_produto: number
   referencia: string
   produto: string
-  valor_unt_norte: string
-  valor_unt_norde: string
+  valor_unt_norte: number
+  valor_unt_norde: number
   status: number
 }
 
@@ -54,12 +58,13 @@ interface PedidoItem {
   id_produto: number
   produto_nome: string
   referencia: string
-  quantidade: number
-  valor_unitario: number
-  total: number
+  regiao: 'nordeste' | 'norte'
+  quantidades: Record<string, number>
+  total_item: number
 }
 
 const router = useRouter()
+const auth = useAuthStore()
 
 // Form Data
 const selectedClientId = ref<string>('')
@@ -78,14 +83,50 @@ const errorMessage = ref<string | null>(null)
 
 // Product Selection State
 const selectedProductId = ref<string>('')
-const itemQuantity = ref(1)
+const itemRegiao = ref<'nordeste' | 'norte'>('nordeste')
+const itemQuantidades = ref<Record<string, number>>({})
+const editingIndex = ref<number | null>(null)
+
+const SIZE_KEYS = [
+  'pp',
+  'p',
+  'm',
+  'g',
+  'u',
+  'rn',
+  'ida_1',
+  'ida_2',
+  'ida_3',
+  'ida_4',
+  'ida_6',
+  'ida_8',
+  'ida_10',
+  'ida_12',
+  'lisa',
+] as const
+
+const SIZE_GROUPS: Array<{ title: string; keys: Array<(typeof SIZE_KEYS)[number]> }> = [
+  { title: 'Infantil', keys: ['pp', 'p', 'm', 'g', 'u', 'rn', 'lisa'] },
+  { title: 'Idades', keys: ['ida_1', 'ida_2', 'ida_3', 'ida_4', 'ida_6', 'ida_8', 'ida_10', 'ida_12'] },
+]
+
+const sizeLabel = (key: (typeof SIZE_KEYS)[number]) => {
+  if (key.startsWith('ida_')) return key.replace('ida_', '')
+  return key.toUpperCase()
+}
+
+const resetItemForm = () => {
+  selectedProductId.value = ''
+  itemRegiao.value = 'nordeste'
+  itemQuantidades.value = Object.fromEntries(SIZE_KEYS.map(k => [k, 0]))
+  editingIndex.value = null
+}
 
 const fetchClientes = async () => {
   isLoadingClientes.value = true
   try {
     const response = await apiClient.get('/api/clientes')
-    // Adjusting to expect payload potentially under response.data.data or directly in response.data
-    clientes.value = response.data?.data?.clientes || response.data?.clientes || response.data || []
+    clientes.value = response.data?.data || []
   } catch (error) {
     console.error('Erro ao buscar clientes', error)
   } finally {
@@ -96,8 +137,8 @@ const fetchClientes = async () => {
 const fetchProdutos = async () => {
   isLoadingProdutos.value = true
   try {
-    const response = await apiClient.get('/api/produtos')
-    produtos.value = response.data?.data?.produtos || response.data?.produtos || response.data || []
+    const response = await apiClient.get('/api/produtos', { params: { status: 1, page: 1, per_page: 100 } })
+    produtos.value = response.data?.data || []
   } catch (error) {
     console.error('Erro ao buscar produtos', error)
   } finally {
@@ -106,6 +147,7 @@ const fetchProdutos = async () => {
 }
 
 onMounted(() => {
+  resetItemForm()
   fetchClientes()
   fetchProdutos()
 })
@@ -114,19 +156,37 @@ const selectedProductData = computed(() => {
   return produtos.value.find(p => p.id_produto.toString() === selectedProductId.value)
 })
 
-const updateItemTotal = (item: PedidoItem) => {
-  // Ensure price and quantity are valid numbers before calculation
-  const price = parseFloat(item.valor_unitario.toString()) || 0;
-  const quantity = Number(item.quantidade) || 0;
+const sumQuantidades = (q: Record<string, number>) => {
+  return SIZE_KEYS.reduce((acc, key) => acc + (Number(q[key]) || 0), 0)
+}
 
-  if (!isNaN(price) && !isNaN(quantity) && quantity > 0) {
-    item.total = price * quantity;
-  } else {
-    item.total = 0; // Reset total if invalid input
+const getSizeBadges = (q: Record<string, number>) => {
+  const list: Array<{ key: string; label: string; value: number }> = []
+  for (const key of SIZE_KEYS) {
+    const value = Number(q[key]) || 0
+    if (value > 0) list.push({ key, label: sizeLabel(key), value })
   }
-};
+  return list
+}
 
-const addItem = () => {
+const getUnitPrice = (product: Produto, regiao: 'nordeste' | 'norte') => {
+  return regiao === 'norte' ? Number(product.valor_unt_norte) || 0 : Number(product.valor_unt_norde) || 0
+}
+
+const calculateItemTotal = (product: Produto, regiao: 'nordeste' | 'norte', quantidades: Record<string, number>) => {
+  const qty = sumQuantidades(quantidades)
+  return qty * getUnitPrice(product, regiao)
+}
+
+const selectedProduct = computed(() => produtos.value.find(p => String(p.id_produto) === selectedProductId.value) || null)
+const itemPieces = computed(() => sumQuantidades(itemQuantidades.value))
+const itemUnitPrice = computed(() => {
+  if (!selectedProduct.value) return 0
+  return getUnitPrice(selectedProduct.value, itemRegiao.value)
+})
+const itemEstimate = computed(() => itemPieces.value * itemUnitPrice.value)
+
+const saveItemToList = () => {
   if (!selectedProductId.value) {
     errorMessage.value = 'Selecione um produto.'
     return
@@ -138,35 +198,37 @@ const addItem = () => {
     return
   }
 
-  const quantity = Number(itemQuantity.value);
-  // Prioritize valor_unt_norde, then valor_unt_norte, default to 0 if invalid
-  const price = parseFloat(product.valor_unt_norde) || parseFloat(product.valor_unt_norte) || 0;
-
-  if (isNaN(price) || isNaN(quantity) || quantity <= 0) {
-    errorMessage.value = 'Por favor, insira uma quantidade válida e verifique o preço do produto.'
+  const qtyTotal = sumQuantidades(itemQuantidades.value)
+  if (qtyTotal <= 0) {
+    errorMessage.value = 'Informe ao menos 1 unidade em algum tamanho.'
     return
   }
 
-  const existingItemIndex = items.value.findIndex(item => item.id_produto === product.id_produto)
-  
-  if (existingItemIndex > -1) {
-    items.value[existingItemIndex].quantidade += quantity;
-    // Recalculate total for existing item
-    updateItemTotal(items.value[existingItemIndex]);
-  } else {
-    items.value.push({
-      id_produto: product.id_produto,
-      produto_nome: product.produto,
-      referencia: product.referencia,
-      quantidade: quantity,
-      valor_unitario: price,
-      total: price * quantity // Calculate total for new item
-    })
+  const entry: PedidoItem = {
+    id_produto: product.id_produto,
+    produto_nome: product.produto,
+    referencia: product.referencia,
+    regiao: itemRegiao.value,
+    quantidades: { ...itemQuantidades.value },
+    total_item: calculateItemTotal(product, itemRegiao.value, itemQuantidades.value),
   }
 
-  // Reset selection
-  selectedProductId.value = ''
-  itemQuantity.value = 1
+  if (editingIndex.value !== null) {
+    items.value.splice(editingIndex.value, 1, entry)
+  } else {
+    items.value.push(entry)
+  }
+
+  resetItemForm()
+}
+
+const editItem = (index: number) => {
+  const item = items.value[index]
+  if (!item) return
+  editingIndex.value = index
+  selectedProductId.value = String(item.id_produto)
+  itemRegiao.value = item.regiao
+  itemQuantidades.value = { ...Object.fromEntries(SIZE_KEYS.map(k => [k, 0])), ...item.quantidades }
 }
 
 const removeItem = (index: number) => {
@@ -174,7 +236,7 @@ const removeItem = (index: number) => {
 }
 
 const totalPedido = computed(() => {
-  return items.value.reduce((acc, item) => acc + item.total, 0)
+  return items.value.reduce((acc, item) => acc + (Number(item.total_item) || 0), 0)
 })
 
 const savePedido = async () => {
@@ -183,24 +245,35 @@ const savePedido = async () => {
     return
   }
 
+  if (!auth.user?.id) {
+    errorMessage.value = 'Usuário não identificado. Faça login novamente.'
+    return
+  }
+
   isSaving.value = true
   errorMessage.value = null
 
   try {
     const payload = {
-      id_cliente: selectedClientId.value,
+      id_cliente: Number(selectedClientId.value),
+      id_vendedor: auth.user.id,
       obs_pedido: obsPedido.value,
       obs_entrega: obsEntrega.value,
       forma_pag: formaPag.value,
       itens: items.value.map(item => ({
         id_produto: item.id_produto,
-        quantidade: item.quantidade,
-        valor_unitario: item.valor_unitario
+        regiao: item.regiao,
+        quantidades: item.quantidades,
       }))
     }
 
     const response = await apiClient.post('/api/pedidos', payload)
-    router.push({ name: 'pedido-detalhes', params: { id: response.data.id_pedido } })
+    const idPedido = response.data?.data?.id_pedido
+    if (idPedido) {
+      router.push({ name: 'pedido-detalhes', params: { id: idPedido } })
+    } else {
+      router.push({ name: 'pedidos' })
+    }
   } catch (error: any) {
     errorMessage.value = error.response?.data?.message || 'Erro ao salvar o pedido.'
   } finally {
@@ -209,7 +282,7 @@ const savePedido = async () => {
 }
 
 const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0)
 }
 </script>
 
@@ -259,7 +332,7 @@ const formatCurrency = (value: number) => {
           </CardContent>
         </Card>
 
-        <!-- Items Selection -->
+<!-- Items Selection -->
         <Card class="rounded-2xl border shadow-sm bg-card overflow-hidden">
           <CardHeader class="border-b bg-muted/20 px-8 py-6">
             <CardTitle class="text-lg font-bold flex items-center gap-2">
@@ -267,28 +340,110 @@ const formatCurrency = (value: number) => {
             </CardTitle>
           </CardHeader>
           <CardContent class="p-6 space-y-6">
-            <!-- Add Item Row -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-muted/30 p-4 rounded-xl border border-dashed">
-              <div class="md:col-span-2 space-y-1.5 text-left">
-                <Label class="text-xs font-semibold text-foreground/70">Produto</Label>
-                <Select v-model="selectedProductId">
-                  <SelectTrigger class="w-full bg-background border h-10 rounded-lg">
-                    <SelectValue placeholder="Escolha um produto..." />
-                  </SelectTrigger>
-                  <SelectContent class="max-h-60">
-                    <SelectItem v-for="prod in produtos" :key="prod.id_produto" :value="prod.id_produto.toString()">
-                      {{ prod.produto }} - {{ prod.referencia }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+            <!-- Add/Edit Item Header -->
+            <div class="rounded-2xl border-2 border-primary/20 bg-muted/10 p-6">
+              <div class="flex items-center justify-between gap-4 mb-6 pb-4 border-b border-primary/10">
+                <div class="space-y-0.5">
+                  <p class="text-lg font-bold flex items-center gap-2">
+                    <span v-if="editingIndex !== null" class="flex items-center gap-2">
+                      <Pencil class="w-4 h-4" /> Editar Item #{{ editingIndex + 1 }}
+                    </span>
+                    <span v-else class="flex items-center gap-2">
+                      <Plus class="w-4 h-4" /> Novo Item
+                    </span>
+                  </p>
+                  <p class="text-sm text-muted-foreground font-medium">Selecione produto, região e quantidades por tamanho.</p>
+                </div>
               </div>
-              <div class="space-y-1.5 text-left">
-                <Label class="text-xs font-semibold text-foreground/70">Quantidade</Label>
-                <Input type="number" v-model.number="itemQuantity" min="1" class="h-10 rounded-lg" />
+
+              <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div class="lg:col-span-8 space-y-4">
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div class="space-y-1.5 text-left md:col-span-2">
+                      <Label class="text-xs font-semibold text-foreground/70">Produto</Label>
+                      <Select v-model="selectedProductId" :disabled="isLoadingProdutos || isSaving">
+                        <SelectTrigger class="w-full bg-background border h-11 rounded-lg">
+                          <SelectValue placeholder="Escolha um produto..." />
+                        </SelectTrigger>
+                        <SelectContent class="max-h-60">
+                          <SelectItem v-for="prod in produtos" :key="prod.id_produto" :value="prod.id_produto.toString()">
+                            {{ prod.produto }} - {{ prod.referencia }}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div class="space-y-1.5 text-left">
+                      <Label class="text-xs font-semibold text-foreground/70">Região (preço)</Label>
+                      <Select v-model="itemRegiao" :disabled="isSaving">
+                        <SelectTrigger class="w-full bg-background border h-11 rounded-lg">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="nordeste">Nordeste</SelectItem>
+                          <SelectItem value="norte">Norte</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div class="rounded-xl border bg-card p-4">
+                    <div class="space-y-5">
+                      <div v-for="group in SIZE_GROUPS" :key="group.title" class="space-y-3">
+                        <div class="flex items-center justify-between">
+                          <p class="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{{ group.title }}</p>
+                          <p class="text-[11px] font-semibold text-muted-foreground">Qtd: {{ group.keys.reduce((a, k) => a + (Number(itemQuantidades[k]) || 0), 0) }}</p>
+                        </div>
+                        <div class="grid grid-cols-4 sm:grid-cols-7 md:grid-cols-8 gap-3">
+                          <div v-for="key in group.keys" :key="key" class="flex flex-col items-center space-y-1">
+                            <Label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{{ sizeLabel(key) }}</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              class="h-10 rounded-lg text-center"
+                              v-model.number="itemQuantidades[key]"
+                              :disabled="isSaving"
+                            />
+                          </div>
+                        </div>
+                        <Separator v-if="group.title !== SIZE_GROUPS[SIZE_GROUPS.length - 1].title" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="lg:col-span-4">
+                  <div class="rounded-2xl border bg-card p-5 space-y-4 shadow-sm">
+                    <p class="text-sm font-extrabold">Resumo do item</p>
+                    <div class="space-y-2 text-sm">
+                      <div class="flex justify-between">
+                        <span class="text-muted-foreground">Peças</span>
+                        <span class="font-bold">{{ itemPieces }}</span>
+                      </div>
+                      <div class="flex justify-between">
+                        <span class="text-muted-foreground">Preço unitário</span>
+                        <span class="font-bold">{{ formatCurrency(itemUnitPrice) }}</span>
+                      </div>
+                      <div class="flex justify-between border-t pt-2">
+                        <span class="font-bold">Total estimado</span>
+                        <span class="font-black text-primary">{{ formatCurrency(itemEstimate) }}</span>
+                      </div>
+                    </div>
+
+                    <div class="flex gap-2 pt-2">
+                      <Button variant="outline" class="flex-1 h-11 rounded-xl" :disabled="isSaving" @click="resetItemForm">Limpar</Button>
+                      <Button @click="saveItemToList" class="flex-1 h-11 rounded-xl gap-2" :disabled="isSaving">
+                        <template v-if="editingIndex !== null">
+                          <Pencil class="w-4 h-4" /> Atualizar
+                        </template>
+                        <template v-else>
+                          <Plus class="w-4 h-4" /> Adicionar
+                        </template>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <Button @click="addItem" variant="secondary" class="h-10 font-bold gap-2">
-                <Plus class="w-4 h-4" /> Add
-              </Button>
             </div>
 
             <!-- Items Table -->
@@ -298,7 +453,7 @@ const formatCurrency = (value: number) => {
                   <TableRow>
                     <TableHead>Produto</TableHead>
                     <TableHead class="text-center">Qtd</TableHead>
-                    <TableHead class="text-right">Unitário</TableHead>
+                    <TableHead>Tamanhos</TableHead>
                     <TableHead class="text-right">Total</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
@@ -311,15 +466,30 @@ const formatCurrency = (value: number) => {
                         <span class="text-[10px] text-muted-foreground">REF: {{ item.referencia }}</span>
                       </div>
                     </TableCell>
-                    <TableCell class="text-center">
-                      <Input type="number" v-model.number="item.quantidade" min="1" class="h-8 w-16 text-center p-0 border-none focus:ring-0" @input="updateItemTotal(item)" />
+                    <TableCell class="text-center font-bold text-xs text-muted-foreground">{{ sumQuantidades(item.quantidades) }}</TableCell>
+                    <TableCell>
+                      <div class="flex flex-wrap gap-1">
+                        <Badge
+                          v-for="b in getSizeBadges(item.quantidades)"
+                          :key="`${item.id_produto}-${b.key}`"
+                          variant="outline"
+                          class="h-5 px-2 rounded-md text-[10px] font-bold"
+                        >
+                          {{ b.label }}:{{ b.value }}
+                        </Badge>
+                        <span v-if="getSizeBadges(item.quantidades).length === 0" class="text-xs text-muted-foreground font-semibold">-</span>
+                      </div>
                     </TableCell>
-                    <TableCell class="text-right">{{ formatCurrency(item.valor_unitario) }}</TableCell>
-                    <TableCell class="text-right font-bold">{{ formatCurrency(item.total) }}</TableCell>
+                    <TableCell class="text-right font-black">{{ formatCurrency(item.total_item) }}</TableCell>
                     <TableCell class="text-right">
-                      <Button variant="ghost" size="icon" @click="removeItem(index)" class="text-destructive hover:text-destructive hover:bg-destructive/10">
-                        <Trash2 class="w-4 h-4" />
-                      </Button>
+                      <div class="flex justify-end gap-1 opacity-70 hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon" @click="editItem(index)" class="hover:bg-accent">
+                          <Pencil class="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" @click="removeItem(index)" class="text-destructive hover:text-destructive hover:bg-destructive/10">
+                          <Trash2 class="w-4 h-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                   <TableRow v-if="items.length === 0">

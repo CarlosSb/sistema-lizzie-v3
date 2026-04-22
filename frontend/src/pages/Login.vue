@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-// Import the auth service (will be created next)
-import { login } from '@/services/authService'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const auth = useAuthStore()
 const username = ref('')
 const password = ref('')
 const errorMessage = ref<string | null>(null)
@@ -20,7 +20,7 @@ const handleLogin = async () => {
   loading.value = true // Set loading state
 
   try {
-    await login(username.value, password.value)
+    await auth.login(username.value, password.value)
     router.push({ name: 'dashboard' }) // Redirect on success
   } catch (error: any) {
     errorMessage.value = error.message || 'Erro ao realizar login.'

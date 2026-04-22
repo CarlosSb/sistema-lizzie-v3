@@ -68,6 +68,12 @@ const handleLogout = () => {
   router.push({ name: 'login' })
 }
 
+const userInitials = () => {
+  const name = auth.user?.nome || auth.user?.usuario || 'User'
+  const parts = name.trim().split(/\s+/).slice(0, 2)
+  return parts.map(p => p[0]?.toUpperCase()).join('') || 'U'
+}
+
 onMounted(() => {
   const savedTheme = localStorage.getItem('theme')
   if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
@@ -174,12 +180,12 @@ onMounted(() => {
           <Separator orientation="vertical" class="h-8" />
 
           <div class="flex flex-col items-end hidden sm:flex">
-            <span class="text-sm font-semibold truncate max-w-[120px]">Admin User</span>
-            <span class="text-[11px] text-muted-foreground font-medium">Vendedor Master</span>
+            <span class="text-sm font-semibold truncate max-w-[160px]">{{ auth.user?.nome || auth.user?.usuario || 'Usuário' }}</span>
+            <span class="text-[11px] text-muted-foreground font-medium">{{ auth.user?.nivel || '' }}</span>
           </div>
           <Avatar class="w-9 h-9 border ring-2 ring-primary/10">
             <AvatarImage src="" alt="Admin" />
-            <AvatarFallback class="bg-primary/10 text-primary font-bold">AU</AvatarFallback>
+            <AvatarFallback class="bg-primary/10 text-primary font-bold">{{ userInitials() }}</AvatarFallback>
           </Avatar>
         </div>
       </header>

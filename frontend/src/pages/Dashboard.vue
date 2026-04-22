@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import axios from 'axios'
 import {
   Users,
   Package,
@@ -31,45 +32,77 @@ interface RecentOrder {
 
 const dashboardStats = ref<Stat[]>([])
 const recentOrdersData = ref<RecentOrder[]>([])
+const insights = ref<{ faturamento_real: number; receita_projetada: number; taxa_conversao: number } | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+
+const getStatusLabel = (status: number) => {
+  switch (status) {
+    case 1: return 'ABERTO'
+    case 2: return 'PENDENTE'
+    case 3: return 'CANCELADO'
+    case 4: return 'CONCLUÍDO'
+    default: return 'DESCONHECIDO'
+  }
+}
+
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0)
+}
 
 const fetchDashboardData = async () => {
   isLoading.value = true
   errorMessage.value = null
   try {
-    const [dashboardResponse, statsResponse] = await Promise.all([
+    const [dashboardResponse, statsResponse, pedidosResponse] = await Promise.all([
       apiClient.get('/api/dashboard'),
-      apiClient.get('/api/dashboard/estatisticas')
+      apiClient.get('/api/dashboard/estatisticas'),
+      apiClient.get('/api/pedidos', { params: { per_page: 5 } }),
     ])
 
-    // --- Process dashboardResponse ---
-    // Assuming dashboardResponse.data contains client, product, order summaries
-    // This mapping needs to align with actual API response from /api/dashboard
-    const dashboardSummary = dashboardResponse.data.summary || {}
+    const dashboardData = dashboardResponse.data?.data
+    const statsData = statsResponse.data?.data
+    const pedidos = pedidosResponse.data?.data || []
+
     dashboardStats.value = [
-      { name: 'Clientes Ativos', value: dashboardSummary.active_clients?.toString() || 'N/A', icon: Users, description: dashboardSummary.client_change || '' },
-      { name: 'Estoque Total', value: dashboardSummary.total_stock?.toString() || 'N/A', icon: Package, description: dashboardSummary.new_items || '' },
-      { name: 'Pedidos Hoje', value: dashboardSummary.orders_today?.toString() || 'N/A', icon: ShoppingCart, description: dashboardSummary.orders_today_value || '' },
+      {
+        name: 'Clientes Ativos',
+        value: String(dashboardData?.clientes?.ativos ?? 0),
+        icon: Users,
+        description: `Total: ${dashboardData?.clientes?.total ?? 0}`,
+      },
+      {
+        name: 'Produtos Ativos',
+        value: String(dashboardData?.produtos?.disponiveis ?? 0),
+        icon: Package,
+        description: 'Disponíveis no catálogo',
+      },
+      {
+        name: 'Pedidos (Total)',
+        value: String(dashboardData?.pedidos?.total ?? 0),
+        icon: ShoppingCart,
+        description: `Concluídos: ${dashboardData?.pedidos?.concluido ?? 0}`,
+      },
     ]
 
-    // Assuming dashboardResponse.data.recent_orders contains recent order list
-    // This mapping needs to align with actual API response from /api/dashboard
-    recentOrdersData.value = dashboardResponse.data.recent_orders?.map((order: any) => ({
-      id: order.id.toString(),
-      client: order.client_name,
-      total: order.total_amount,
-      status: order.status_label.toUpperCase(),
-      time: order.time_ago, // Or actual time
-    })) || []
+    recentOrdersData.value = pedidos.map((order: any) => ({
+      id: String(order.id_pedido),
+      client: order.razao_social || '-',
+      total: formatCurrency(Number(order.total_pedido) || 0),
+      status: getStatusLabel(Number(order.status)),
+      time: String(order.data_pedido || ''),
+    }))
 
-    // --- Process statsResponse (if needed, currently not explicitly used in template beyond above) ---
-    // statsResponse.data can be used for 'Insights de Vendas' or other detailed charts/graphs
-    console.log('Dashboard Stats API Response:', statsResponse.data);
-
+    insights.value = statsData?.metricas
+      ? {
+          faturamento_real: Number(statsData.metricas.faturamento_real) || 0,
+          receita_projetada: Number(statsData.metricas.receita_projetada) || 0,
+          taxa_conversao: Number(statsData.metricas.taxa_conversao) || 0,
+        }
+      : null
 
   } catch (error: any) {
-    if (apiClient.isAxiosError(error) && error.response) {
+    if (axios.isAxiosError(error) && error.response) {
       errorMessage.value = error.response.data.message || 'Erro ao carregar dados do dashboard.'
     } else {
       errorMessage.value = 'Erro de conexão com o servidor.'
@@ -172,12 +205,26 @@ onMounted(() => {
           </CardHeader>
 
           <CardContent class="p-8">
-            <div class="h-64 flex flex-col items-center justify-center border-2 border-dashed rounded-2xl text-center p-8">
+            <div v-if="insights" class="space-y-4">
+              <div class="flex justify-between items-center">
+                <span class="text-sm text-muted-foreground">Faturamento Real</span>
+                <span class="font-bold">{{ formatCurrency(insights.faturamento_real) }}</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-sm text-muted-foreground">Receita Projetada</span>
+                <span class="font-bold">{{ formatCurrency(insights.receita_projetada) }}</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-sm text-muted-foreground">Taxa de Conversão</span>
+                <span class="font-bold">{{ insights.taxa_conversao }}%</span>
+              </div>
+            </div>
+            <div v-else class="h-64 flex flex-col items-center justify-center border-2 border-dashed rounded-2xl text-center p-8">
               <div class="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4 text-muted-foreground opacity-40">
                 <AlertCircle class="w-8 h-8" />
               </div>
               <p class="text-sm font-bold mb-1">Aguardando mais dados</p>
-              <p class="text-xs text-muted-foreground max-w-[200px] font-medium">Os relatórios de performance serão ativados assim que mais pedidos forem concluídos.</p>
+              <p class="text-xs text-muted-foreground max-w-[200px] font-medium">Os relatórios serão exibidos assim que houver dados suficientes.</p>
             </div>
           </CardContent>
         </Card>

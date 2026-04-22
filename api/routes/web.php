@@ -73,6 +73,7 @@ $router->group(['prefix' => 'api', 'middleware' => ['cors', 'jwt']], function ()
     $router->delete('/pedidos/{id}', 'PedidoController@destroy');
     $router->get('/pedidos/{id}/itens', 'ItemPedidoController@index');
     $router->post('/pedidos/{id}/itens', 'ItemPedidoController@store');
+    $router->put('/itens/{id}', 'ItemPedidoController@update');
     $router->delete('/itens/{id}', 'ItemPedidoController@destroy');
 
     // Vendedores
