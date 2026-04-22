@@ -15,6 +15,10 @@ $app = new Laravel\Lumen\Application(
 $app->withFacades();
 $app->withEloquent();
 
+$app->middleware([
+    App\Http\Middleware\CorsMiddleware::class,
+]);
+
 $app->routeMiddleware([
     'jwt' => App\Http\Middleware\JwtMiddleware::class,
     'cors' => App\Http\Middleware\CorsMiddleware::class,
