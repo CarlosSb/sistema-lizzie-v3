@@ -74,6 +74,23 @@ const routes = [
         name: 'vendedores',
         component: () => import('../pages/Vendedores/Lista.vue')
       },
+      {
+        path: 'vendedores/novo',
+        name: 'vendedores-novo',
+        component: () => import('../pages/Vendedores/Form.vue')
+      },
+      {
+        path: 'vendedores/:id',
+        name: 'vendedores-detalhes',
+        component: () => import('../pages/Vendedores/Detalhes.vue'),
+        props: true
+      },
+      {
+        path: 'vendedores/:id/editar',
+        name: 'vendedores-editar',
+        component: () => import('../pages/Vendedores/Form.vue'),
+        props: true
+      },
     ]
   },
   {

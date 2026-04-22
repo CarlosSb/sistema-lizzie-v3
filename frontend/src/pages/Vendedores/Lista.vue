@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue'
-import { Plus, Search, MoreHorizontal, User, Trash2, Loader2, AlertCircle } from 'lucide-vue-next'
+import { Plus, Search, MoreHorizontal, User, Trash2, Loader2, AlertCircle, Pencil } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -93,7 +93,7 @@ const getStatusClass = (status: number) => {
         <p class="text-muted-foreground text-sm font-medium mt-1">Gerencie a equipe de vendas.</p>
       </div>
       
-      <Button class="bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl h-11 px-6 shadow-lg shadow-primary/20 flex gap-2">
+      <Button @click="$router.push('/vendedores/novo')" class="bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl h-11 px-6 shadow-lg shadow-primary/20 flex gap-2">
         <Plus class="w-4 h-4" />
         Novo Vendedor
       </Button>
@@ -174,8 +174,12 @@ const getStatusClass = (status: number) => {
                 <DropdownMenuContent align="end" class="rounded-xl border shadow-xl w-48">
                   <DropdownMenuLabel class="text-[10px] font-bold uppercase tracking-wider py-2 opacity-50 px-4 text-left">Ações</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem class="text-xs font-bold py-2.5 cursor-pointer px-4 text-left">
+                  <DropdownMenuItem @click="$router.push(`/vendedores/${vendedor.id_vendedor}`)" class="text-xs font-bold py-2.5 cursor-pointer px-4 text-left">
                     Ver Detalhes
+                  </DropdownMenuItem>
+                  <DropdownMenuItem @click="$router.push(`/vendedores/${vendedor.id_vendedor}/editar`)" class="text-xs font-bold py-2.5 cursor-pointer px-4 text-left">
+                    <Pencil class="w-4 h-4 mr-2" />
+                    Editar
                   </DropdownMenuItem>
                   <DropdownMenuItem class="text-xs font-bold py-2.5 cursor-pointer px-4 text-destructive focus:text-destructive text-left">
                     <Trash2 class="w-4 h-4 mr-2 opacity-50" />
