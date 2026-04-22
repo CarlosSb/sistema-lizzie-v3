@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, User, Package, ShoppingCart, Loader2, AlertCircle, Save, Plus, Pencil, Trash2, X } from 'lucide-vue-next'
+import { ArrowLeft, User, Package, ShoppingCart, Loader2, AlertCircle, Save, Plus, Pencil, Trash2, X, Printer } from 'lucide-vue-next'
+import PedidoPrint from '@/components/PedidoPrint.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,14 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from '@/components/ui/table'
 import apiClient from '@/lib/axios'
 
 interface PedidoDetalhes {
@@ -99,6 +92,9 @@ const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
 const isUpdatingStatus = ref(false) // For loading state on status update
 const newStatus = ref<number | null>(null) // Ref for the new status value
+const showPreviewModal = ref(false)
+const printMode = ref<'complete' | 'summary' | null>(null)
+const printOption = ref<string>('')
 
 const produtos = ref<Produto[]>([])
 const isLoadingProdutos = ref(false)
@@ -311,6 +307,21 @@ const getStatusLabel = (status: number) => {
   }
 }
 
+const availableStatuses = computed(() => {
+  if (!pedido.value) return []
+  const current = pedido.value.status
+  if (current === 1) { // ABERTO
+    return [{ value: 3, label: 'CANCELADO' }]
+  } else if (current === 2) { // PENDENTE
+    return [
+      { value: 4, label: 'CONCLUÍDO' },
+      { value: 3, label: 'CANCELADO' }
+    ]
+  } else {
+    return []
+  }
+})
+
 onMounted(async () => {
   resetItemForm()
   await Promise.all([fetchPedidoDetalhes(), fetchProdutos()])
@@ -322,7 +333,7 @@ const goBack = () => {
 
 const updateOrderStatus = async () => {
   if (!pedido.value || newStatus.value === null) return // Ensure we have a pedido and a new status selected
-  
+
   if (pedido.value.status === newStatus.value) { // No change needed
     return
   }
@@ -340,7 +351,7 @@ const updateOrderStatus = async () => {
       pedido.value.status = response.data?.data?.status !== undefined ? response.data.data.status : newStatus.value
     }
     // Optionally re-fetch all details, or just update the status badge
-    // fetchPedidoDetalhes() 
+    // fetchPedidoDetalhes()
   } catch (error: any) {
     errorMessage.value = 'Erro ao atualizar status do pedido.'
     console.error('Failed to update order status:', error)
@@ -348,6 +359,33 @@ const updateOrderStatus = async () => {
     isUpdatingStatus.value = false
   }
 }
+
+const printPedido = (mode: 'complete' | 'summary') => {
+  printMode.value = mode
+  showPreviewModal.value = true
+  console.log(`Opening preview for pedido in ${mode} mode...`) // Debug log
+}
+
+const onPdfGenerated = (mode: 'complete' | 'summary') => {
+  showPreviewModal.value = false
+  printMode.value = null
+  // Auto-update status to PENDENTE for complete mode
+  if (mode === 'complete') {
+    newStatus.value = 2
+    updateOrderStatus()
+  }
+}
+
+watch(printOption, (newVal) => {
+  if (newVal) {
+    if (newVal === 'Imprimir Completo') {
+      printPedido('complete')
+    } else if (newVal === 'Imprimir Resumido') {
+      printPedido('summary')
+    }
+    printOption.value = ''
+  }
+})
 </script>
 
 <template>
@@ -393,17 +431,14 @@ const updateOrderStatus = async () => {
           
           <!-- Status Update Section -->
           <div class="flex items-center gap-3">
-            <Select v-model="newStatus" class="w-[150px]">
-              <SelectTrigger class="h-10 rounded-lg border-dashed border-primary/30">
-                <SelectValue :placeholder="getStatusLabel(pedido.status)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem :value="1">ABERTO</SelectItem>
-                <SelectItem value="2">PENDENTE</SelectItem>
-                <SelectItem value="4">CONCLUÍDO</SelectItem>
-                <SelectItem value="3">CANCELADO</SelectItem>
-              </SelectContent>
-            </Select>
+              <Select v-model="newStatus" :disabled="availableStatuses.length === 0" class="w-[150px]">
+                <SelectTrigger class="h-10 rounded-lg border-dashed border-primary/30">
+                  <SelectValue :placeholder="getStatusLabel(pedido.status)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="status in availableStatuses" :key="status.value" :value="status.value">{{ status.label }}</SelectItem>
+                </SelectContent>
+              </Select>
             <Button @click="updateOrderStatus" :disabled="isUpdatingStatus || pedido.status === newStatus" variant="outline" class="h-10 rounded-lg">
               <template v-if="isUpdatingStatus">
                 <Loader2 class="w-4 h-4 animate-spin" /> Salvando
@@ -413,6 +448,21 @@ const updateOrderStatus = async () => {
               </template>
             </Button>
           </div>
+
+          <!-- Print Select -->
+          <Select v-model="printOption">
+            <SelectTrigger class="w-[180px] h-10 rounded-lg">
+              <SelectValue placeholder="Imprimir..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Imprimir Completo" :disabled="!pedido || pedido.itens.length === 0">
+                <Printer class="w-4 h-4 mr-2" /> Imprimir Completo
+              </SelectItem>
+              <SelectItem value="Imprimir Resumido">
+                <Printer class="w-4 h-4 mr-2" /> Imprimir Resumido
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </CardHeader>
         <CardContent class="p-6 space-y-4">
           <div class="grid grid-cols-2 gap-4">
@@ -660,5 +710,8 @@ const updateOrderStatus = async () => {
         </CardContent>
       </Card>
     </div>
+
+    <!-- Preview Modal -->
+    <PedidoPrint v-if="showPreviewModal && printMode" :pedido="pedido" :cliente="cliente" :mode="printMode" :showButton="true" :preview="true" @closePreview="showPreviewModal = false" @pdfGenerated="onPdfGenerated" />
   </div>
 </template>

@@ -79,7 +79,7 @@ function selectItem(selectedLabel: string) {
               v-for="item in props.items"
               :key="item.value"
               :value="item.label"
-              @select="(ev) => selectItem(ev.detail.value)"
+              @select="(ev) => selectItem(String(ev.detail.value ?? ''))"
             >
               <CheckIcon
                 :class="cn(

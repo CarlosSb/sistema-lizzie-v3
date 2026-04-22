@@ -19,6 +19,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -81,6 +89,7 @@ const isLoadingClientes = ref(false)
 const isLoadingProdutos = ref(false)
 const isSaving = ref(false)
 const errorMessage = ref<string | null>(null)
+const showConfirmDialog = ref(false)
 
 // Product Selection State
 const selectedProductId = ref<string>('')
@@ -557,8 +566,8 @@ const formatCurrency = (value: number) => {
               </div>
             </div>
 
-            <Button 
-              @click="savePedido" 
+            <Button
+              @click="showConfirmDialog = true"
               class="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-base rounded-xl shadow-lg shadow-primary/20 gap-3"
               :disabled="isSaving || items.length === 0"
             >
@@ -573,5 +582,46 @@ const formatCurrency = (value: number) => {
         </Card>
       </div>
     </div>
+
+    <!-- Confirmation Dialog -->
+    <Dialog v-model:open="showConfirmDialog">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Confirmar Pedido</DialogTitle>
+          <DialogDescription>
+            Revise os dados do pedido antes de concluir.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-4">
+          <div class="flex justify-between">
+            <span class="font-medium">Cliente:</span>
+            <span>{{ clientItems.find(c => c.value === selectedClientId)?.label || 'Nenhum' }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="font-medium">Itens:</span>
+            <span>{{ items.length }} item(s)</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="font-medium">Total:</span>
+            <span class="font-bold">{{ formatCurrency(totalPedido) }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="font-medium">Pagamento:</span>
+            <span>{{ formaPag }}</span>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="showConfirmDialog = false">Cancelar</Button>
+          <Button @click="savePedido" :disabled="isSaving">
+            <template v-if="isSaving">
+              <Loader2 class="w-4 h-4 animate-spin mr-2" /> Salvando...
+            </template>
+            <template v-else>
+              Confirmar
+            </template>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
