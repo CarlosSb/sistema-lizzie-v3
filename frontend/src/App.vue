@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
-import { Button } from '@/components/ui/button'
+// App.vue
 </script>
 
 <template>
-  <HelloWorld />
-  <Button>Click me</Button>
+  <router-view />
 </template>
+
+<style>
+/* Global styles if needed */
+</style>
