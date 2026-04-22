@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Combobox } from '@/components/ui/combobox'
 import {
   Table,
   TableBody,
@@ -281,6 +282,20 @@ const savePedido = async () => {
   }
 }
 
+const clientItems = computed(() =>
+  clientes.value.map(c => ({
+    value: c.id_cliente.toString(),
+    label: `${c.nome_fantasia || c.razao_social} (${c.cpf_cnpj})`
+  }))
+)
+
+const productItems = computed(() =>
+  produtos.value.map(p => ({
+    value: p.id_produto.toString(),
+    label: `${p.produto} - ${p.referencia}`
+  }))
+)
+
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0)
 }
@@ -317,16 +332,13 @@ const formatCurrency = (value: number) => {
           <CardContent class="p-6">
             <div class="grid w-full items-center gap-1.5">
               <Label class="text-xs font-semibold text-foreground/70 mb-1">Cliente</Label>
-              <Select v-model="selectedClientId">
-                <SelectTrigger class="w-full bg-background border h-11 rounded-lg">
-                  <SelectValue placeholder="Selecione um cliente..." />
-                </SelectTrigger>
-                <SelectContent class="max-h-60 overflow-y-auto">
-                  <SelectItem v-for="cliente in clientes" :key="cliente.id_cliente" :value="cliente.id_cliente.toString()">
-                    {{ cliente.nome_fantasia || cliente.razao_social }} ({{ cliente.cpf_cnpj }})
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <Combobox
+                v-model="selectedClientId"
+                placeholder="Selecione um cliente..."
+                search-placeholder="Buscar cliente..."
+                empty-text="Nenhum cliente encontrado."
+                :items="clientItems"
+              />
               <p v-if="isLoadingClientes" class="text-[10px] text-muted-foreground animate-pulse">Carregando clientes...</p>
             </div>
           </CardContent>
@@ -356,21 +368,19 @@ const formatCurrency = (value: number) => {
                 </div>
               </div>
 
-              <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                <div class="lg:col-span-8 space-y-4">
+              <div class="grid grid-cols-1 gap-6">
+                <div class="space-y-4">
                   <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                     <div class="space-y-1.5 text-left md:col-span-2">
                       <Label class="text-xs font-semibold text-foreground/70">Produto</Label>
-                      <Select v-model="selectedProductId" :disabled="isLoadingProdutos || isSaving">
-                        <SelectTrigger class="w-full bg-background border h-11 rounded-lg">
-                          <SelectValue placeholder="Escolha um produto..." />
-                        </SelectTrigger>
-                        <SelectContent class="max-h-60">
-                          <SelectItem v-for="prod in produtos" :key="prod.id_produto" :value="prod.id_produto.toString()">
-                            {{ prod.produto }} - {{ prod.referencia }}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Combobox
+                        v-model="selectedProductId"
+                        placeholder="Escolha um produto..."
+                        search-placeholder="Buscar produto..."
+                        empty-text="Nenhum produto encontrado."
+                        :disabled="isLoadingProdutos || isSaving"
+                        :items="productItems"
+                      />
                     </div>
 
                     <div class="space-y-1.5 text-left">
@@ -412,7 +422,7 @@ const formatCurrency = (value: number) => {
                   </div>
                 </div>
 
-                <div class="lg:col-span-4">
+                <div class="">
                   <div class="rounded-2xl border bg-card p-5 space-y-4 shadow-sm">
                     <p class="text-sm font-extrabold">Resumo do item</p>
                     <div class="space-y-2 text-sm">

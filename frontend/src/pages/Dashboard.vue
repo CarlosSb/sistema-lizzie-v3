@@ -137,7 +137,7 @@ onMounted(() => {
 
     <div v-else>
       <!-- Stats Grid -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pb-6">
         <Card v-for="stat in dashboardStats" :key="stat.name"
              class="bg-card border shadow-sm hover:shadow-md transition-all duration-300 rounded-2xl overflow-hidden">
           <CardContent class="p-6">

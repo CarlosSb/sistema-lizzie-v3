@@ -11,8 +11,7 @@ const pinia = createPinia()
 app.use(pinia)
 app.use(router)
 
-// Hydrate user details on boot (token is already loaded from storage by the store)
-const auth = useAuthStore(pinia)
-auth.refreshUser()
+// Token and user are loaded from localStorage by the store
+// User details will be refreshed lazily when needed
 
 app.mount('#app')

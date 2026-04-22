@@ -15,6 +15,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from '@/components/ui/table'
 import apiClient from '@/lib/axios'
 
 interface PedidoDetalhes {
@@ -604,41 +612,40 @@ const updateOrderStatus = async () => {
           </div>
         </CardContent>
 
-        <CardContent class="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Produto</TableHead>
-                <TableHead>Referência</TableHead>
-                <TableHead class="text-center">Qtd</TableHead>
-                <TableHead>Tamanhos</TableHead>
-                <TableHead class="text-right">Total Item</TableHead>
-                <TableHead class="text-right"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow v-for="item in pedido.itens" :key="item.id_item_pedido">
-                <TableCell>#{{ item.id_item_pedido }}</TableCell>
-                <TableCell class="font-bold">{{ item.produto }}</TableCell>
-                <TableCell class="text-xs font-semibold text-muted-foreground">{{ item.referencia }}</TableCell>
-                <TableCell class="text-center">{{ getItemQtdTotal(item) }}</TableCell>
-                <TableCell>
-                  <div class="flex flex-wrap gap-1">
-                    <Badge
-                      v-for="b in getSizeBadges(mapItemToQuantidades(item))"
-                      :key="`${item.id_item_pedido}-${b.key}`"
-                      variant="outline"
-                      class="h-5 px-2 rounded-md text-[10px] font-bold"
-                    >
-                      {{ b.label }}:{{ b.value }}
-                    </Badge>
-                    <span v-if="getSizeBadges(mapItemToQuantidades(item)).length === 0" class="text-xs text-muted-foreground font-semibold">-</span>
+        <CardContent class="p-6">
+          <div v-if="pedido.itens.length === 0" class="text-center py-10 text-muted-foreground">
+            Nenhum item neste pedido.
+          </div>
+          <div v-else class="space-y-4">
+            <Card v-for="item in pedido.itens" :key="item.id_item_pedido" class="border rounded-lg shadow-sm">
+              <CardContent class="p-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div class="flex-1 space-y-2">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-bold text-muted-foreground">#{{ item.id_item_pedido }}</span>
+                      <Badge variant="outline" class="text-xs">{{ item.referencia }}</Badge>
+                    </div>
+                    <p class="font-bold text-base">{{ item.produto }}</p>
+                    <div class="flex items-center gap-4 text-sm">
+                      <span class="text-muted-foreground">Quantidade:</span>
+                      <span class="font-semibold">{{ getItemQtdTotal(item) }}</span>
+                    </div>
+                    <div class="flex items-center gap-4 text-sm">
+                      <span class="text-muted-foreground">Total:</span>
+                      <span class="font-bold text-primary">{{ formatCurrency(item.total_item) }}</span>
+                    </div>
+                    <div v-if="getSizeBadges(mapItemToQuantidades(item)).length > 0" class="flex flex-wrap gap-1 mt-2">
+                      <Badge
+                        v-for="b in getSizeBadges(mapItemToQuantidades(item))"
+                        :key="`${item.id_item_pedido}-${b.key}`"
+                        variant="outline"
+                        class="h-5 px-2 rounded-md text-[10px] font-bold"
+                      >
+                        {{ b.label }}:{{ b.value }}
+                      </Badge>
+                    </div>
                   </div>
-                </TableCell>
-                <TableCell class="text-right font-black">{{ formatCurrency(item.total_item) }}</TableCell>
-                <TableCell class="text-right">
-                  <div class="flex justify-end gap-1 pr-4 opacity-70 hover:opacity-100 transition-opacity">
+                  <div class="flex gap-2">
                     <Button variant="ghost" size="icon" class="h-9 w-9 rounded-lg hover:bg-accent" :disabled="isSavingItem" @click="openEditItem(item)">
                       <Pencil class="w-4 h-4" />
                     </Button>
@@ -646,13 +653,10 @@ const updateOrderStatus = async () => {
                       <Trash2 class="w-4 h-4" />
                     </Button>
                   </div>
-                </TableCell>
-              </TableRow>
-              <TableRow v-if="pedido.itens.length === 0">
-                <TableCell colspan="7" class="text-center py-10 text-muted-foreground">Nenhum item neste pedido.</TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </CardContent>
       </Card>
     </div>
