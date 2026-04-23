@@ -30,9 +30,45 @@ npm install
 npm run dev
 ```
 
-## Command Line Interface (CLI)
+## Lizzie CLI (lizzie.sh)
 
-O projeto inclui vários comandos CLI para facilitar o desenvolvimento e manutenção:
+O projeto inclui um script CLI personalizado `lizzie.sh` para facilitar o desenvolvimento e manutenção. Execute `./lizzie.sh help` para ver todos os comandos disponíveis.
+
+### Verificação de Ambiente
+```bash
+./lizzie.sh check          # Verifica dependências e ambiente
+```
+
+### Instalação
+```bash
+./lizzie.sh install        # Instala todas as dependências (PHP + Node)
+./lizzie.sh install-phpbrew # Instala phpbrew para gerenciar versões PHP
+./lizzie.sh install-php82   # Instala PHP 8.2 via phpbrew
+```
+
+### Desenvolvimento
+```bash
+./lizzie.sh dev             # Inicia API + Frontend simultaneamente
+./lizzie.sh serve           # Inicia apenas a API (porta 8000)
+./lizzie.sh frontend        # Inicia apenas o Frontend (porta 5173)
+```
+
+### Build e Banco de Dados
+```bash
+./lizzie.sh build           # Build do frontend para produção
+./lizzie.sh migrate         # Executa migrações do banco
+./lizzie.sh rollback        # Reverte migrações
+```
+
+### Requisitos Verificados pelo CLI
+- **PHP**: 8.1 - 8.2 (recomendado)
+- **Composer**: 2.x
+- **Node.js**: 18+
+- **Extensões PHP**: pdo_mysql, mbstring, xml, json
+
+## Command Line Interface (npm scripts)
+
+O projeto também inclui scripts npm para operações específicas:
 
 ### Desenvolvimento
 | Comando | Descrição | Exemplo |
