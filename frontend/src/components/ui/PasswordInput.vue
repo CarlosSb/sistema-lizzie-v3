@@ -33,12 +33,12 @@ const togglePassword = () => {
 <template>
   <div class="relative">
     <Input
+      :modelValue="modelValue"
       :type="inputType"
-      :value="modelValue"
       :placeholder="placeholder"
       :disabled="disabled"
       :class="class"
-      @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+      @update:modelValue="$emit('update:modelValue', $event)"
     />
     <Button
       type="button"

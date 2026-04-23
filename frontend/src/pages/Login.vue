@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { LogIn, AlertCircle } from 'lucide-vue-next'
+import { LogIn, AlertCircle, Loader2 } from 'lucide-vue-next'
 import logomarca from '@/assets/img-logomarca-lizzie.webp'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
