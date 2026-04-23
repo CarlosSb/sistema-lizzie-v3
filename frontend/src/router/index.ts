@@ -91,6 +91,16 @@ const routes = [
         component: () => import('../pages/Vendedores/Form.vue'),
         props: true
       },
+      {
+        path: 'perfil',
+        name: 'perfil',
+        component: () => import('../pages/Usuario/Perfil.vue')
+      },
+      {
+        path: 'perfil/editar',
+        name: 'perfil-editar',
+        component: () => import('../pages/Usuario/Form.vue')
+      },
     ]
   },
   {

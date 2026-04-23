@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import PasswordInput from '@/components/ui/PasswordInput.vue'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Select,
@@ -231,9 +232,8 @@ onMounted(() => {
             <Label htmlFor="senha" class="text-sm font-semibold">
               Senha {{ isEditing ? '(deixe em branco para manter)' : '*' }}
             </Label>
-            <Input
+            <PasswordInput
               id="senha"
-              type="password"
               v-model="senha"
               placeholder="Digite a senha"
               class="rounded-xl h-12"

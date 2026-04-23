@@ -30,6 +30,77 @@ npm install
 npm run dev
 ```
 
+## Command Line Interface (CLI)
+
+O projeto inclui vários comandos CLI para facilitar o desenvolvimento e manutenção:
+
+### Desenvolvimento
+| Comando | Descrição | Exemplo |
+|---------|-----------|---------|
+| `npm run dev` | Inicia API e frontend simultaneamente | `npm run dev` |
+| `npm run dev:api` | Inicia apenas o servidor da API | `npm run dev:api` |
+| `npm run dev:frontend` | Inicia apenas o servidor do frontend | `npm run dev:frontend` |
+
+### Instalação e Build
+| Comando | Descrição | Exemplo |
+|---------|-----------|---------|
+| `npm run install:all` | Instala dependências de todos os módulos | `npm run install:all` |
+| `npm run build` | Compila o frontend para produção | `npm run build` |
+| `npm run build:all` | Compila frontend e otimiza API | `npm run build:all` |
+
+### Banco de Dados
+| Comando | Descrição | Exemplo |
+|---------|-----------|---------|
+| `npm run migrate` | Executa migrações do banco | `npm run migrate` |
+| `npm run migrate:rollback` | Reverte última migração | `npm run migrate:rollback` |
+| `npm run db:seed` | Popula banco com dados de teste | `npm run db:seed` |
+
+### Utilitários
+| Comando | Descrição | Exemplo |
+|---------|-----------|---------|
+| `npm run test` | Executa testes (configurar pastas) | `npm run test` |
+
+### Comandos do Frontend
+Execute dentro da pasta `frontend/`:
+
+```bash
+cd frontend
+npm run dev      # Desenvolvimento
+npm run build    # Build de produção
+npm run preview  # Preview do build
+```
+
+### Comandos da API
+Execute dentro da pasta `api/`:
+
+```bash
+cd api
+php artisan serve           # Iniciar servidor
+php artisan migrate         # Executar migrações
+php artisan migrate:rollback # Reverter migração
+php artisan db:seed         # Popular banco
+composer install            # Instalar dependências PHP
+```
+
+### Exemplo de Workflow Completo
+
+```bash
+# Instalação inicial
+npm run install:all
+
+# Configuração do banco
+cp api/.env.example api/.env
+# Editar api/.env com configurações do banco
+npm run migrate
+npm run db:seed
+
+# Desenvolvimento
+npm run dev
+
+# Produção
+npm run build:all
+```
+
 ## Credenciais Teste
 
 | Usuário | Senha | Nível |
