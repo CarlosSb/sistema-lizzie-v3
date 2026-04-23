@@ -13,7 +13,8 @@ import {
   Search,
   Sun,
   Moon,
-  X
+  X,
+  Check
 } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
 import { Button } from '@/components/ui/button'
@@ -28,6 +29,9 @@ const auth = useAuthStore()
 const isSidebarOpen = ref(true)
 const isMobileMenuOpen = ref(false) // Mobile specific state
 const isDarkMode = ref(false)
+const isAlertDropdownOpen = ref(false)
+const alerts = ref([])
+const unreadCount = ref(0)
 
 const breakpoints = useBreakpoints({
   mobile: 0,
@@ -70,6 +74,48 @@ const handleLogout = () => {
   router.push({ name: 'login' })
 }
 
+const fetchAlerts = async () => {
+  try {
+    const response = await fetch('/api/alertas')
+    if (response.ok) {
+      alerts.value = await response.json()
+    }
+  } catch (error) {
+    console.error('Failed to fetch alerts:', error)
+  }
+}
+
+const fetchUnreadCount = async () => {
+  try {
+    const response = await fetch('/api/alertas/nao-lidos')
+    if (response.ok) {
+      const data = await response.json()
+      unreadCount.value = data.count || 0
+    }
+  } catch (error) {
+    console.error('Failed to fetch unread count:', error)
+  }
+}
+
+const markAsRead = async (alertId) => {
+  try {
+    await fetch(`/api/alertas/${alertId}/ler`, { method: 'PUT' })
+    // Update local state
+    const alert = alerts.value.find(a => a.id === alertId)
+    if (alert) alert.lido = true
+    unreadCount.value = Math.max(0, unreadCount.value - 1)
+  } catch (error) {
+    console.error('Failed to mark as read:', error)
+  }
+}
+
+const toggleAlertDropdown = () => {
+  isAlertDropdownOpen.value = !isAlertDropdownOpen.value
+  if (isAlertDropdownOpen.value) {
+    fetchAlerts()
+  }
+}
+
 const userInitials = () => {
   const name = auth.user?.nome || auth.user?.usuario || 'User'
   const parts = name.trim().split(/\s+/).slice(0, 2)
@@ -87,6 +133,7 @@ onMounted(() => {
     isDarkMode.value = true
     document.documentElement.classList.add('dark')
   }
+  fetchUnreadCount()
 })
 </script>
 
@@ -185,10 +232,45 @@ onMounted(() => {
         </div>
 
         <div class="flex items-center gap-4">
-          <Button variant="ghost" size="icon" class="relative rounded-lg hover:bg-accent">
-            <Bell class="w-5 h-5" />
-            <span class="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full ring-2 ring-card"></span>
-          </Button>
+          <div class="relative">
+            <Button variant="ghost" size="icon" class="relative rounded-lg hover:bg-accent" @click="toggleAlertDropdown">
+              <Bell class="w-5 h-5" />
+              <span v-if="unreadCount > 0" class="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full ring-2 ring-card"></span>
+            </Button>
+
+            <!-- Alert Dropdown -->
+            <div v-if="isAlertDropdownOpen" class="absolute top-full right-0 mt-2 w-80 bg-card border rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+              <div class="p-4 border-b flex items-center justify-between">
+                <h3 class="font-semibold text-sm">Notificações</h3>
+                <Button variant="ghost" size="icon" class="h-6 w-6" @click="isAlertDropdownOpen = false">
+                  <X class="w-4 h-4" />
+                </Button>
+              </div>
+              <div v-if="alerts.length === 0" class="p-4 text-center text-muted-foreground text-sm">
+                Nenhum alerta no momento
+              </div>
+              <div v-else class="divide-y">
+                <div v-for="alert in alerts" :key="alert.id" class="p-4 hover:bg-accent/50 transition-colors">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="flex-1">
+                      <p class="text-sm font-medium">{{ alert.titulo || 'Alerta' }}</p>
+                      <p class="text-xs text-muted-foreground mt-1">{{ alert.mensagem }}</p>
+                      <p class="text-xs text-muted-foreground mt-1">{{ new Date(alert.created_at).toLocaleString() }}</p>
+                    </div>
+                    <Button
+                      v-if="!alert.lido"
+                      variant="ghost"
+                      size="icon"
+                      class="h-6 w-6 shrink-0"
+                      @click="markAsRead(alert.id)"
+                    >
+                      <Check class="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <Separator orientation="vertical" class="h-8" />
 
