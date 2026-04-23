@@ -16,6 +16,15 @@ class VendedorController extends Controller
             $query->where('status', $request->status);
         }
 
+        if ($request->has('search') && $request->search) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('nome_vendedor', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhere('cpf', 'like', "%{$search}%");
+            });
+        }
+
         $vendedores = $query->orderBy('nome_vendedor')->get();
 
         return response()->json([

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBreakpoints } from '@vueuse/core'
 import {
@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { Input } from '@/components/ui/input'
+import apiClient from '@/lib/axios'
 import logoFull from '@/assets/img-logomarca-lizzie.webp'
 import logoMini from '@/assets/img-logo-lizzie.webp'
 
@@ -30,8 +31,32 @@ const isSidebarOpen = ref(true)
 const isMobileMenuOpen = ref(false) // Mobile specific state
 const isDarkMode = ref(false)
 const isAlertDropdownOpen = ref(false)
-const alerts = ref([])
+const alerts = ref<Alert[]>([])
 const unreadCount = ref(0)
+
+// Alert interface
+interface Alert {
+  id: number
+  titulo?: string
+  mensagem: string
+  created_at: string
+  lido: boolean
+}
+
+// Search state
+const searchTerm = ref('')
+const searchResults = ref<SearchResult[]>([])
+const isSearching = ref(false)
+const searchDebounceTimer = ref<number | null>(null)
+
+// Search result interface
+interface SearchResult {
+  id: number
+  type: string
+  title: string
+  subtitle: string
+  route: { name: string; params: { id: number } }
+}
 
 const breakpoints = useBreakpoints({
   mobile: 0,
@@ -97,7 +122,7 @@ const fetchUnreadCount = async () => {
   }
 }
 
-const markAsRead = async (alertId) => {
+const markAsRead = async (alertId: number) => {
   try {
     await fetch(`/api/alertas/${alertId}/ler`, { method: 'PUT' })
     // Update local state
@@ -113,6 +138,145 @@ const toggleAlertDropdown = () => {
   isAlertDropdownOpen.value = !isAlertDropdownOpen.value
   if (isAlertDropdownOpen.value) {
     fetchAlerts()
+  }
+}
+
+// Search functions
+const searchClients = async (term: string): Promise<SearchResult[]> => {
+   try {
+     const response = await apiClient.get('/api/clientes', {
+       params: { search: term, per_page: 5 }
+     })
+     return response.data?.data?.map((item: any) => ({
+       id: item.id_cliente,
+       type: 'cliente',
+       title: item.nome || item.razao_social || 'Cliente',
+       subtitle: item.email || item.telefone || '',
+       route: { name: 'clientes-editar', params: { id: item.id_cliente } }
+     })) || []
+   } catch (error) {
+     console.error('Failed to search clients:', error)
+     return []
+   }
+ }
+
+const searchOrders = async (term: string): Promise<SearchResult[]> => {
+   try {
+     const response = await apiClient.get('/api/pedidos', {
+       params: { search: term, per_page: 5 }
+     })
+     return response.data?.data?.map((item: any) => ({
+       id: item.id_pedido,
+       type: 'pedido',
+       title: `Pedido #${item.id_pedido}`,
+       subtitle: item.cliente?.razao_social || item.data_pedido || '',
+       route: { name: 'pedido-detalhes', params: { id: item.id_pedido } }
+     })) || []
+   } catch (error) {
+     console.error('Failed to search orders:', error)
+     return []
+   }
+ }
+
+const searchProducts = async (term: string): Promise<SearchResult[]> => {
+   try {
+     const response = await apiClient.get('/api/produtos', {
+       params: { search: term, per_page: 5 }
+     })
+     return response.data?.data?.map((item: any) => ({
+       id: item.id_produto,
+       type: 'produto',
+       title: item.produto,
+       subtitle: `R$ ${item.valor_unt_norde?.toFixed(2)}`,
+       route: { name: 'produto-editar', params: { id: item.id_produto } }
+     })) || []
+   } catch (error) {
+     console.error('Failed to search products:', error)
+     return []
+   }
+ }
+
+const searchVendors = async (term: string): Promise<SearchResult[]> => {
+   try {
+     const response = await apiClient.get('/api/vendedores', {
+       params: { search: term, per_page: 5 }
+     })
+     return response.data?.data?.map((item: any) => ({
+       id: item.id_vendedor,
+       type: 'vendedor',
+       title: item.nome_vendedor,
+       subtitle: item.email || item.telefone || '',
+       route: { name: 'vendedores-editar', params: { id: item.id_vendedor } }
+     })) || []
+   } catch (error) {
+     console.error('Failed to search vendors:', error)
+     return []
+   }
+ }
+
+const performSearch = async () => {
+  // Clear previous debounce timer
+  if (searchDebounceTimer.value) {
+    clearTimeout(searchDebounceTimer.value)
+    searchDebounceTimer.value = null
+  }
+  
+  // Set searching state
+  isSearching.value = true
+  
+  // If empty search term, clear results
+  if (!searchTerm.value.trim()) {
+    searchResults.value = []
+    isSearching.value = false
+    return
+  }
+  
+  try {
+    // Perform all searches in parallel
+    const [clients, orders, products, vendors] = await Promise.all([
+      searchClients(searchTerm.value),
+      searchOrders(searchTerm.value),
+      searchProducts(searchTerm.value),
+      searchVendors(searchTerm.value)
+    ])
+    
+    // Combine and flatten results
+    const allResults = [...clients, ...orders, ...products, ...vendors]
+    searchResults.value = allResults
+  } catch (error) {
+    console.error('Failed to perform search:', error)
+    searchResults.value = []
+  } finally {
+    isSearching.value = false
+  }
+}
+
+const handleSearchInput = () => {
+  // Clear existing timeout
+  if (searchDebounceTimer.value) {
+    clearTimeout(searchDebounceTimer.value)
+  }
+  
+  // Set new timeout (300ms debounce)
+  searchDebounceTimer.value = setTimeout(() => {
+    performSearch()
+  }, 300)
+}
+
+const handleSearchEnter = () => {
+  // Immediate search on Enter key
+  if (searchDebounceTimer.value) {
+    clearTimeout(searchDebounceTimer.value)
+  }
+  performSearch()
+}
+
+const navigateToResult = (result: SearchResult) => {
+  if (result.route) {
+    router.push(result.route)
+    // Optionally close search dropdown
+    searchTerm.value = ''
+    searchResults.value = []
   }
 }
 
@@ -134,6 +298,12 @@ onMounted(() => {
     document.documentElement.classList.add('dark')
   }
   fetchUnreadCount()
+})
+
+onUnmounted(() => {
+  if (searchDebounceTimer.value) {
+    clearTimeout(searchDebounceTimer.value)
+  }
 })
 </script>
 
@@ -221,17 +391,65 @@ onMounted(() => {
             <Menu class="w-5 h-5" />
           </Button>
           
-          <div class="hidden lg:flex items-center bg-muted/50 rounded-lg px-3 w-80 group focus-within:bg-background focus-within:ring-1 focus-within:ring-primary transition-all">
-            <Search class="w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-            <Input 
-              type="text" 
-              placeholder="Pesquisar..." 
-              class="border-0 focus-visible:ring-0 text-sm bg-transparent h-10 w-full" 
-            />
-          </div>
-        </div>
+           <div class="hidden lg:flex items-center bg-muted/50 rounded-lg px-3 w-80 group focus-within:bg-background focus-within:ring-1 focus-within:ring-primary transition-all">
+             <Search class="w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+              <Input 
+                v-model="searchTerm"
+                type="text" 
+                placeholder="Search customers, orders, products..." 
+                aria-label="Global search"
+                class="border-0 focus-visible:ring-0 text-sm bg-transparent h-10 w-full" 
+                @input="handleSearchInput"
+                @keyup.enter="handleSearchEnter"
+              />
+           </div>
 
-        <div class="flex items-center gap-4">
+            <!-- Search Results Dropdown -->
+            <div v-if="isSearching" class="absolute top-full left-0 right-0 mt-2">
+              <div class="px-4 py-2 text-center text-sm text-muted-foreground">
+                Searching...
+              </div>
+            </div>
+            <div v-else-if="searchResults.length > 0" class="absolute top-full left-0 right-0 mt-2 w-full md:w-96 bg-card border rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+              <div class="px-4 py-2 border-b">
+                <span class="font-semibold text-sm">{{ searchResults.length }} results</span>
+              </div>
+              <div class="divide-y">
+                <div v-for="(result, index) in searchResults" :key="index" class="px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer" @click="navigateToResult(result)">
+                  <div class="flex items-start gap-3">
+                    <!-- Entity icon based on type -->
+                    <div class="flex-shrink-0 h-8 w-8 flex items-center justify-center">
+                      <template v-if="result.type === 'cliente'">
+                        <Users class="w-5 h-5 text-primary" />
+                      </template>
+                      <template v-else-if="result.type === 'pedido'">
+                        <ShoppingCart class="w-5 h-5 text-primary" />
+                      </template>
+                      <template v-else-if="result.type === 'produto'">
+                        <Package class="w-5 h-5 text-primary" />
+                      </template>
+                      <template v-else-if="result.type === 'vendedor'">
+                        <Users class="w-5 h-5 text-primary" />
+                      </template>
+                      <template v-else>
+                        <Users class="w-5 h-5 text-primary" />
+                      </template>
+                    </div>
+                    <div class="flex-1">
+                      <p class="text-sm font-medium">{{ result.title }}</p>
+                      <p class="text-xs text-muted-foreground">{{ result.subtitle }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-if="searchResults.length === 0 && searchTerm" class="px-4 py-4 text-center text-sm text-muted-foreground">
+                No results found for "{{ searchTerm }}"
+              </div>
+            </div>
+
+         </div>
+
+         <div class="flex items-center gap-4">
           <div class="relative">
             <Button variant="ghost" size="icon" class="relative rounded-lg hover:bg-accent" @click="toggleAlertDropdown">
               <Bell class="w-5 h-5" />
