@@ -101,10 +101,8 @@ const handleLogout = () => {
 
 const fetchAlerts = async () => {
   try {
-    const response = await fetch('/api/alertas')
-    if (response.ok) {
-      alerts.value = await response.json()
-    }
+    const response = await apiClient.get('/api/alertas')
+    alerts.value = response.data?.data || []
   } catch (error) {
     console.error('Failed to fetch alerts:', error)
   }
@@ -112,11 +110,8 @@ const fetchAlerts = async () => {
 
 const fetchUnreadCount = async () => {
   try {
-    const response = await fetch('/api/alertas/nao-lidos')
-    if (response.ok) {
-      const data = await response.json()
-      unreadCount.value = data.count || 0
-    }
+    const response = await apiClient.get('/api/alertas/nao-lidos')
+    unreadCount.value = response.data?.data?.count || 0
   } catch (error) {
     console.error('Failed to fetch unread count:', error)
   }
@@ -124,7 +119,7 @@ const fetchUnreadCount = async () => {
 
 const markAsRead = async (alertId: number) => {
   try {
-    await fetch(`/api/alertas/${alertId}/ler`, { method: 'PUT' })
+    await apiClient.put(`/api/alertas/${alertId}/ler`)
     // Update local state
     const alert = alerts.value.find(a => a.id === alertId)
     if (alert) alert.lido = true
