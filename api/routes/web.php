@@ -109,6 +109,13 @@ $router->group(['prefix' => 'api', 'middleware' => ['cors', 'jwt']], function ()
     $router->post('/pdf/carne/{id}', 'PdfController@gerarCarne');
     $router->post('/pdf/recibo/{id}', 'PdfController@gerarRecibo');
 
+    // Documentos (novo contrato)
+    $router->get('/documents/pedido/{id}/preview', 'DocumentController@previewPedido');
+    $router->post('/documents/pedido/{id}/generate', 'DocumentController@generatePedido');
+    $router->get('/documents/{documentId}/metadata', 'DocumentController@metadata');
+    $router->get('/documents/{documentId}/content', 'DocumentController@content');
+    $router->post('/documents/cleanup', 'DocumentController@cleanup');
+
     // PDFs de Relatórios
     $router->post('/pdf/relatorio/vendas', 'PdfController@relatorioVendas');
     $router->post('/pdf/relatorio/vendedores', 'PdfController@relatorioVendedores');
