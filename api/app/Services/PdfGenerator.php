@@ -121,9 +121,19 @@ class PdfGenerator
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
 
+        if ($options->templateId === 'pedido') {
+            $pdf->SetMargins(8, 8, 8);
+            $pdf->SetAutoPageBreak(true, 4);
+        }
+
         $pdf->AddPage();
 
-        $pdf->writeHTML($html, true, false, true, false, '');
+        $advanceAfterHtml = $options->templateId !== 'pedido';
+        $pdf->writeHTML($html, $advanceAfterHtml, false, true, false, '');
+
+        if ($options->templateId === 'pedido' && $pdf->getNumPages() > 1 && $pdf->GetY() <= 25) {
+            $pdf->deletePage($pdf->getNumPages());
+        }
 
         return $pdf->Output('', 'S');
     }

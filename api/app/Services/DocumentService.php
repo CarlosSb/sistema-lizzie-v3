@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Log;
 
 class DocumentService
 {
+    private const PEDIDO_LAYOUT_VERSION = 'pedido-template-v34';
+
     private PdfGenerator $pdfGenerator;
     private string $baseDir;
     private int $ttlSeconds;
@@ -139,7 +141,7 @@ class DocumentService
             'generated_at' => $data->generatedAt->format(DATE_ATOM),
             'generated_at_formatted' => $this->formatDateTimeLikeTemplate($data->generatedAt),
             'footer_text' => 'Sistema Lizzie - Gestão Empresarial | Este documento é oficial e foi gerado automaticamente pelo sistema.',
-            'layout_version' => 'pedido-template-v2',
+            'layout_version' => self::PEDIDO_LAYOUT_VERSION,
         ];
     }
 
@@ -275,7 +277,7 @@ class DocumentService
             'paper' => $options->paperSize,
             'orientation' => $options->orientation,
             'include_qr' => $options->includeQR,
-            'layout_version' => 'pedido-template-v2',
+            'layout_version' => self::PEDIDO_LAYOUT_VERSION,
         ];
 
         return sha1(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));

@@ -7,7 +7,7 @@ class PedidoTemplate extends BaseTemplate
     public function render(PrintData $data, PrintOptions $options): string
     {
         $html = $this->getStyles();
-        $html .= '<div class="document">';
+        $html .= '<main class="page">';
         $html .= $this->getHeader($data);
 
         if ($this->isComplete($options)) {
@@ -23,7 +23,7 @@ class PedidoTemplate extends BaseTemplate
 
         $html .= $this->getSignatures($data);
         $html .= $this->getFooter($data);
-        $html .= '</div>';
+        $html .= '</main>';
 
         return $html;
     }
@@ -32,136 +32,169 @@ class PedidoTemplate extends BaseTemplate
     {
         return '
             <style>
+                * {
+                    box-sizing: border-box;
+                    font-family: Arial, Helvetica, sans-serif;
+                }
+
+                @page {
+                    size: A4;
+                    margin: 12mm;
+                }
+
                 body {
-                    background: #ffffff;
+                    margin: 0;
+                    background: #eef2f7;
                     color: #0f172a;
-                    font-family: helvetica, arial, sans-serif;
-                    font-size: 10px;
-                    line-height: 1.35;
+                    font-size: 12px;
                 }
-                .document {
-                    background: #ffffff;
-                    padding: 0;
-                }
-                .header {
-                    border-bottom: 2px solid #1e293b;
-                    padding-bottom: 14px;
-                    margin-bottom: 18px;
-                }
-                .header-table,
-                .info-table,
-                .items-table,
-                .signature-table {
+
+                .page {
                     width: 100%;
-                    border-collapse: collapse;
+                    background: #ffffff;
+                    padding: 24px;
+                    border: 1px solid #d4dce8;
+                    border-radius: 6px;
                 }
-                .logo-box {
-                    width: 54px;
-                    height: 54px;
+
+                .header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    border-bottom: 2px solid #1e3a5f;
+                    padding-bottom: 16px;
+                }
+
+                .brand {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+
+                .logo {
+                    width: 48px;
+                    height: 48px;
                     border: 1px solid #cbd5e1;
-                    background-color: #f1f5f9;
-                    color: #64748b;
-                    text-align: center;
-                    line-height: 54px;
-                    font-size: 8px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: #94a3b8;
+                    font-size: 10px;
                 }
-                .brand-title {
-                    font-size: 22px;
-                    font-weight: bold;
-                    color: #0f172a;
+
+                .brand h1 {
                     margin: 0;
+                    font-size: 20px;
+                    color: #0f172a;
                 }
-                .muted {
+
+                .brand p,
+                .order-info p {
+                    margin: 3px 0;
+                    font-size: 10px;
                     color: #64748b;
                 }
-                .order-title {
-                    font-size: 16px;
-                    font-weight: bold;
-                    color: #0f172a;
+
+                .order-info {
                     text-align: right;
-                    margin: 0;
                 }
+
+                .order-info h2 {
+                    margin: 0 0 6px;
+                    font-size: 15px;
+                }
+
                 .section {
-                    margin-bottom: 18px;
+                    margin-top: 18px;
                 }
+
                 .section-title {
                     font-size: 12px;
                     font-weight: bold;
-                    color: #0f172a;
-                    border-bottom: 1px solid #cbd5e1;
+                    border-bottom: 1px solid #94a3b8;
                     padding-bottom: 5px;
                     margin-bottom: 8px;
                 }
-                .info-box {
-                    border: 1px solid #e2e8f0;
-                    background-color: #f8fafc;
+
+                .box {
+                    border: 1px solid #cbd5e1;
+                    border-radius: 6px;
+                    background: #f8fafc;
                     padding: 10px;
                 }
-                .info-table td {
-                    width: 50%;
-                    padding: 3px 6px;
-                    vertical-align: top;
+
+                .grid-2 {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 7px 28px;
                 }
-                .label {
-                    font-weight: bold;
-                    color: #334155;
+
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 10.5px;
                 }
-                .items-table th {
-                    background-color: #f1f5f9;
+
+                th {
+                    background: #f1f5f9;
+                    padding: 7px;
+                    text-align: left;
                     border-bottom: 1px solid #cbd5e1;
-                    color: #0f172a;
-                    font-weight: bold;
-                    padding: 7px 6px;
                 }
-                .items-table thead {
-                    display: table-header-group;
+
+                td {
+                    padding: 7px;
+                    border-bottom: 1px solid #cbd5e1;
                 }
-                .items-table td {
-                    border-top: 1px solid #e2e8f0;
-                    padding: 7px 6px;
-                    vertical-align: top;
-                }
-                .items-table tr {
-                    page-break-inside: avoid;
-                }
-                .items-table .total-row td {
-                    background-color: #f1f5f9;
-                    font-weight: bold;
-                    font-size: 11px;
-                }
-                .text-center {
-                    text-align: center;
-                }
-                .text-right {
+
+                th:nth-child(2),
+                td:nth-child(2),
+                th:nth-child(4),
+                td:nth-child(4),
+                th:nth-child(5),
+                td:nth-child(5) {
                     text-align: right;
                 }
-                .product-reference {
-                    color: #64748b;
-                    font-size: 8px;
+
+                .total-row {
+                    margin-top: 10px;
+                    text-align: right;
+                    font-weight: bold;
                 }
+
                 .note-box {
-                    border: 1px solid #e2e8f0;
-                    background-color: #f8fafc;
-                    padding: 9px;
-                    margin-bottom: 8px;
-                    page-break-inside: avoid;
+                    min-height: 50px;
+                    margin-bottom: 10px;
                 }
-                .signature-block {
-                    padding-top: 38px;
+
+                .signatures {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 40px;
+                    margin-top: 55px;
+                }
+
+                .signature {
+                    border-top: 1px solid #0f172a;
                     text-align: center;
+                    padding-top: 7px;
+                    font-size: 10px;
                 }
-                .signature-line {
-                    border-bottom: 1px solid #64748b;
-                    height: 34px;
-                    margin-bottom: 6px;
-                }
-                .footer {
-                    text-align: center;
+
+                .signature span {
+                    display: block;
                     color: #64748b;
-                    border-top: 2px solid #e2e8f0;
-                    padding-top: 10px;
+                    font-size: 9px;
+                    margin-top: 2px;
+                }
+
+                .footer {
+                    border-top: 1px solid #cbd5e1;
                     margin-top: 28px;
-                    font-size: 8px;
+                    padding-top: 8px;
+                    text-align: center;
+                    color: #94a3b8;
+                    font-size: 9px;
                 }
             </style>
         ';
@@ -170,68 +203,56 @@ class PedidoTemplate extends BaseTemplate
     private function getHeader(PrintData $data): string
     {
         return '
-            <div class="header">
-                <table class="header-table">
-                    <tr>
-                        <td style="width: 64px;">
-                            <div class="logo-box">LOGO</div>
-                        </td>
-                        <td>
-                            <div class="brand-title">Sistema Lizzie</div>
-                            <div class="muted">Sistema de Gestão Empresarial</div>
-                        </td>
-                        <td style="width: 210px; text-align: right;">
-                            <div class="order-title">Pedido #' . $this->h($data->pedido->id_pedido ?? '') . '</div>
-                            <div class="muted">Data: ' . $this->h($this->formatDate((string)($data->pedido->data_pedido ?? ''))) . '</div>
-                            <div class="muted">Status: ' . $this->h($this->getStatusText((int)($data->pedido->status ?? 0))) . '</div>
-                        </td>
-                    </tr>
-                </table>
-            </div>
+            <header class="header">
+                <div class="brand">
+                    <div class="logo">LOGO</div>
+                    <div>
+                        <h1>Sistema Lizzie</h1>
+                        <p>Sistema de Gestão Empresarial</p>
+                    </div>
+                </div>
+
+                <div class="order-info">
+                    <h2>Pedido #' . $this->h($data->pedido->id_pedido ?? '') . '</h2>
+                    <p>Data: ' . $this->h($this->safeDate($data->pedido->data_pedido ?? null)) . '</p>
+                    <p>Status: ' . $this->h($this->getStatusText((int)($data->pedido->status ?? 0))) . '</p>
+                </div>
+            </header>
         ';
     }
 
     private function getClientInfo(PrintData $data): string
     {
         return '
-            <div class="section">
+            <section class="section">
                 <div class="section-title">Dados do Cliente</div>
-                <div class="info-box">
-                    <table class="info-table">
-                        <tr>
-                            <td><span class="label">Nome/Razão Social:</span> ' . $this->h($this->clientName($data)) . '</td>
-                            <td><span class="label">Responsável:</span> ' . $this->h($this->safeText($data->cliente->responsavel ?? '-')) . '</td>
-                        </tr>
-                        <tr>
-                            <td><span class="label">CPF/CNPJ:</span> ' . $this->h($this->safeText($data->cliente->cpf_cnpj ?? '-')) . '</td>
-                            <td><span class="label">Email:</span> ' . $this->h($this->safeText($data->cliente->email ?? '-')) . '</td>
-                        </tr>
-                        <tr>
-                            <td><span class="label">Contato:</span> ' . $this->h($this->safeText($data->cliente->contato_1 ?? '-')) . '</td>
-                            <td><span class="label">Cidade/Estado:</span> ' . $this->h($this->safeText($data->cliente->cidade ?? '-')) . ' / ' . $this->h($this->safeText($data->cliente->estado ?? '-')) . '</td>
-                        </tr>
-                        <tr>
-                            <td colspan="2"><span class="label">Endereço:</span> ' . $this->h($this->safeText($data->cliente->endereco ?? '-')) . ', ' . $this->h($this->safeText($data->cliente->bairro ?? '-')) . ' - ' . $this->h($this->safeText($data->cliente->cep ?? '-')) . '</td>
-                        </tr>
-                    </table>
+                <div class="box grid-2">
+                    <div><strong>Nome/Razão Social:</strong> ' . $this->h($this->clientName($data)) . '</div>
+                    <div><strong>Responsável:</strong> ' . $this->h($this->safeText($data->cliente->responsavel ?? '-')) . '</div>
+                    <div><strong>CPF/CNPJ:</strong> ' . $this->h($this->safeText($data->cliente->cpf_cnpj ?? '-')) . '</div>
+                    <div><strong>Email:</strong> ' . $this->h($this->safeText($data->cliente->email ?? '-')) . '</div>
+                    <div><strong>Contato:</strong> ' . $this->h($this->safeText($data->cliente->contato_1 ?? '-')) . '</div>
+                    <div><strong>Cidade/Estado:</strong> ' . $this->h($this->safeText($data->cliente->cidade ?? '-')) . ' / ' . $this->h($this->safeText($data->cliente->estado ?? '-')) . '</div>
+                    <div><strong>Endereço:</strong> ' . $this->h($this->safeText($data->cliente->endereco ?? '-')) . ', ' . $this->h($this->safeText($data->cliente->bairro ?? '-')) . ' - ' . $this->h($this->safeText($data->cliente->cep ?? '-')) . '</div>
                 </div>
-            </div>
+            </section>
         ';
     }
 
     private function getItemsTable(PrintData $data): string
     {
         $html = '
-            <div class="section">
+            <section class="section">
                 <div class="section-title">Itens do Pedido</div>
-                <table class="items-table">
+
+                <table>
                     <thead>
                         <tr>
-                            <th style="width: 34%; text-align: left;">Produto</th>
-                            <th style="width: 10%;" class="text-center">Qtd.</th>
-                            <th style="width: 24%;" class="text-center">Tamanhos</th>
-                            <th style="width: 16%;" class="text-right">Unitário</th>
-                            <th style="width: 16%;" class="text-right">Total</th>
+                            <th>Produto</th>
+                            <th>Qtd.</th>
+                            <th>Tamanhos</th>
+                            <th>Unitário</th>
+                            <th>Total</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -244,26 +265,23 @@ class PedidoTemplate extends BaseTemplate
 
             $html .= '
                         <tr>
-                            <td>
-                                <strong>' . $this->h($this->safeText($item->produto ?? '-')) . '</strong><br />
-                                <span class="product-reference">' . $this->h($this->safeText($item->referencia ?? '-')) . '</span>
-                            </td>
-                            <td class="text-center">' . $quantidade . '</td>
-                            <td class="text-center">' . $this->h($tamanhos) . '</td>
-                            <td class="text-right">' . $this->h($this->formatCurrency($valorUnitario)) . '</td>
-                            <td class="text-right"><strong>' . $this->h($this->formatCurrency((float)($item->total_item ?? 0))) . '</strong></td>
+                            <td>' . $this->h($this->safeText($item->produto ?? '-')) . '<br><small>' . $this->h($this->safeText($item->referencia ?? '-')) . '</small></td>
+                            <td>' . $quantidade . '</td>
+                            <td>' . $this->h($tamanhos) . '</td>
+                            <td>' . $this->h($this->formatCurrency($valorUnitario)) . '</td>
+                            <td>' . $this->h($this->formatCurrency((float)($item->total_item ?? 0))) . '</td>
                         </tr>
             ';
         }
 
         $html .= '
-                        <tr class="total-row">
-                            <td colspan="4" class="text-right">Total do Pedido:</td>
-                            <td class="text-right">' . $this->h($this->formatCurrency((float)($data->pedido->total_pedido ?? 0))) . '</td>
-                        </tr>
                     </tbody>
                 </table>
-            </div>
+
+                <div class="total-row">
+                    Total do Pedido: ' . $this->h($this->formatCurrency((float)($data->pedido->total_pedido ?? 0))) . '
+                </div>
+            </section>
         ';
 
         return $html;
@@ -271,49 +289,40 @@ class PedidoTemplate extends BaseTemplate
 
     private function getPaymentInfo(PrintData $data): string
     {
-        $discount = (float)($data->pedido->ped_desconto ?? 0);
-        $discountHtml = $discount > 0
-            ? '<tr><td><span class="label">Desconto:</span> ' . $this->h($this->formatCurrency($discount)) . '</td><td></td></tr>'
-            : '';
-
         return '
-            <div class="section">
+            <section class="section">
                 <div class="section-title">Resumo e Pagamento</div>
-                <div class="info-box">
-                    <table class="info-table">
-                        <tr>
-                            <td><span class="label">Status:</span> ' . $this->h($this->getStatusText((int)($data->pedido->status ?? 0))) . '</td>
-                            <td><span class="label">Forma de Pagamento:</span> ' . $this->h($this->safeText($data->pedido->forma_pag ?? '-')) . '</td>
-                        </tr>
-                        ' . $discountHtml . '
-                        <tr>
-                            <td><span class="label">Total:</span> <strong>' . $this->h($this->formatCurrency((float)($data->pedido->total_pedido ?? 0))) . '</strong></td>
-                            <td></td>
-                        </tr>
-                    </table>
+                <div class="box grid-2">
+                    <div>
+                        <strong>Status:</strong> ' . $this->h($this->getStatusText((int)($data->pedido->status ?? 0))) . '<br>
+                        <strong>Total:</strong> ' . $this->h($this->formatCurrency((float)($data->pedido->total_pedido ?? 0))) . '
+                    </div>
+                    <div>
+                        <strong>Forma de Pagamento:</strong> ' . $this->h($this->safeText($data->pedido->forma_pag ?? '-')) . '
+                    </div>
                 </div>
-            </div>
+            </section>
         ';
     }
 
     private function getAdditionalInfo(PrintData $data): string
     {
-        $obsPedido = $this->safeText($data->pedido->obs_pedido ?? '');
-        $obsEntrega = $this->safeText($data->pedido->obs_entrega ?? '');
+        $obsPedido = $this->safeOptionalText($data->pedido->obs_pedido ?? '');
+        $obsEntrega = $this->safeOptionalText($data->pedido->obs_entrega ?? '');
 
         if ($obsPedido === '' && $obsEntrega === '') {
             return '';
         }
 
         $html = '
-            <div class="section">
+            <section class="section">
                 <div class="section-title">Informações Adicionais</div>
         ';
 
         if ($obsPedido !== '') {
             $html .= '
-                <div class="note-box">
-                    <strong>Observações do Pedido</strong><br />
+                <div class="box note-box">
+                    <strong>Observações do Pedido</strong><br>
                     ' . nl2br($this->h($obsPedido)) . '
                 </div>
             ';
@@ -321,47 +330,46 @@ class PedidoTemplate extends BaseTemplate
 
         if ($obsEntrega !== '') {
             $html .= '
-                <div class="note-box">
-                    <strong>Observações de Entrega</strong><br />
+                <div class="box note-box">
+                    <strong>Observações de Entrega</strong><br>
                     ' . nl2br($this->h($obsEntrega)) . '
                 </div>
             ';
         }
 
-        return $html . '</div>';
+        $html .= '</section>';
+
+        return $html;
     }
 
     private function getSignatures(PrintData $data): string
     {
         return '
-            <div class="section">
+            <section class="section">
                 <div class="section-title">Assinaturas</div>
-                <table class="signature-table">
-                    <tr>
-                        <td style="width: 48%;" class="signature-block">
-                            <div class="signature-line"></div>
-                            <strong>Cliente</strong><br />
-                            <span class="muted">' . $this->h($this->clientName($data)) . '</span>
-                        </td>
-                        <td style="width: 4%;"></td>
-                        <td style="width: 48%;" class="signature-block">
-                            <div class="signature-line"></div>
-                            <strong>Sistema Lizzie</strong><br />
-                            <span class="muted">Representante Autorizado</span>
-                        </td>
-                    </tr>
-                </table>
-            </div>
+
+                <div class="signatures">
+                    <div class="signature">
+                        Cliente
+                        <span>' . $this->h($this->clientName($data)) . '</span>
+                    </div>
+
+                    <div class="signature">
+                        Sistema Lizzie
+                        <span>Representante Autorizado</span>
+                    </div>
+                </div>
+            </section>
         ';
     }
 
     private function getFooter(PrintData $data): string
     {
         return '
-            <div class="footer">
-                <strong>Documento gerado em ' . $this->h($this->formatDateTime($data->generatedAt)) . '</strong><br />
-                Sistema Lizzie - Gestão Empresarial | Este documento é oficial e foi gerado automaticamente pelo sistema.
-            </div>
+            <footer class="footer">
+                Documento gerado em ' . $this->h($this->formatDateTime($data->generatedAt)) . '<br>
+                Sistema Lizzie — Gestão Empresarial. Documento gerado automaticamente.
+            </footer>
         ';
     }
 
@@ -382,8 +390,8 @@ class PedidoTemplate extends BaseTemplate
 
     private function safeText($value): string
     {
-        if ($value === null) {
-            return '';
+        if ($value === null || $value === '') {
+            return '-';
         }
 
         if (is_scalar($value)) {
@@ -408,7 +416,52 @@ class PedidoTemplate extends BaseTemplate
             return $encoded !== false ? $encoded : '[objeto]';
         }
 
+        return '-';
+    }
+
+    private function safeOptionalText($value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        if (is_scalar($value)) {
+            return (string)$value;
+        }
+
+        if (is_array($value)) {
+            $flat = array_map(
+                fn($item) => is_scalar($item) || $item === null ? (string)($item ?? '') : json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                $value
+            );
+
+            return implode(', ', $flat);
+        }
+
+        if (is_object($value)) {
+            if (method_exists($value, '__toString')) {
+                return (string)$value;
+            }
+
+            $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            return $encoded !== false ? $encoded : '';
+        }
+
         return '';
+    }
+
+    private function safeDate($value): string
+    {
+        if ($value === null || $value === '') {
+            return '-';
+        }
+
+        $timestamp = strtotime((string)$value);
+        if ($timestamp === false) {
+            return $this->safeText($value);
+        }
+
+        return date('d/m/Y', $timestamp);
     }
 
     private function getStatusText(int $status): string
@@ -458,5 +511,10 @@ class PedidoTemplate extends BaseTemplate
             fn($size) => $size['label'] . ':' . intval($item->{$size['key']} ?? 0),
             array_filter($sizes, fn($size) => intval($item->{$size['key']} ?? 0) > 0)
         );
+    }
+
+    private function formatCurrency(float $value): string
+    {
+        return 'R$ ' . number_format($value, 2, ',', '.');
     }
 }
