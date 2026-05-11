@@ -1,5 +1,7 @@
 <?php
 
+ini_set('error_reporting', E_ALL & ~E_DEPRECATED);
+
 require_once __DIR__.'/../vendor/autoload.php';
 
 (new Laravel\Lumen\Bootstrap\LoadEnvironmentVariables(
@@ -7,6 +9,9 @@ require_once __DIR__.'/../vendor/autoload.php';
 ))->bootstrap();
 
 date_default_timezone_set(env('APP_TIMEZONE', 'UTC'));
+
+// Suppress deprecated warnings from vendor code
+error_reporting(E_ALL & ~E_DEPRECATED);
 
 $app = new Laravel\Lumen\Application(
     dirname(__DIR__)

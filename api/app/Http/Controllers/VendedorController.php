@@ -20,7 +20,6 @@ class VendedorController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('nome_vendedor', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
                   ->orWhere('cpf', 'like', "%{$search}%");
             });
         }

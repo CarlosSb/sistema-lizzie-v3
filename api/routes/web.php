@@ -22,13 +22,13 @@ $router->group(['prefix' => 'api', 'middleware' => 'cors'], function () use ($ro
     $router->post('/auth/refresh', 'AuthController@refresh');
     $router->get('/auth/me', 'AuthController@me');
     $router->put('/auth/profile', 'AuthController@updateProfile');
-    
+
     // Busca global
     $router->get('/busca', 'BuscaController@index');
-    
+
     // SSE - Tempo Real (sem JWT pois browsers não enviam headers em EventSource)
     $router->get('/alertas/stream', ['middleware' => 'cors', 'uses' => 'AlertaController@stream']);
-    
+
     // Alertas
     $router->get('/alertas', 'AlertaController@index');
     $router->get('/alertas/nao-lidos', 'AlertaController@naoLidos');
@@ -102,4 +102,15 @@ $router->group(['prefix' => 'api', 'middleware' => ['cors', 'jwt']], function ()
     $router->get('/relatorios/insights', 'DashboardController@insights');
     $router->get('/relatorios/clientes', 'DashboardController@relatorioClientes');
     $router->get('/relatorios/clientes/{id}', 'DashboardController@clienteDetalhes');
+
+    // PDFs de Pedidos
+    $router->post('/pdf/pedido/{id}', 'PdfController@gerarPedido');
+    $router->post('/pdf/etiqueta/{id}', 'PdfController@gerarEtiqueta');
+    $router->post('/pdf/carne/{id}', 'PdfController@gerarCarne');
+    $router->post('/pdf/recibo/{id}', 'PdfController@gerarRecibo');
+
+    // PDFs de Relatórios
+    $router->post('/pdf/relatorio/vendas', 'PdfController@relatorioVendas');
+    $router->post('/pdf/relatorio/vendedores', 'PdfController@relatorioVendedores');
+    $router->post('/pdf/relatorio/produtos', 'PdfController@relatorioProdutos');
 });
