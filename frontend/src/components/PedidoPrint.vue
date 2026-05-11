@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import axios from 'axios'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 // @ts-ignore
@@ -11,9 +12,12 @@ interface Props {
   mode: 'complete' | 'summary'
   showButton?: boolean
   preview?: boolean
+  useServerSide?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  useServerSide: false
+})
 
 const emit = defineEmits<{
   pdfGenerated: [mode: 'complete' | 'summary']
@@ -22,6 +26,8 @@ const emit = defineEmits<{
 }>()
 
 const pdfRef = ref<any>(null)
+const loading = ref(false)
+const error = ref<string>('')
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0)
@@ -32,6 +38,38 @@ const previewPDF = () => {
 }
 
 const generatePDF = async () => {
+  loading.value = true
+  error.value = ''
+
+  try {
+    if (props.useServerSide) {
+      await generateServerSidePDF()
+    } else {
+      await generateClientSidePDF()
+    }
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Erro ao gerar PDF'
+    console.error('Erro ao gerar PDF:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+const generateServerSidePDF = async () => {
+  const response = await axios.post(`/api/pdf/pedido/${props.pedido.id_pedido}`, {
+    format: 'pdf',
+    paper_size: 'a4',
+    orientation: 'portrait',
+    include_qr: false
+  }, {
+    responseType: 'blob'
+  })
+
+  const pdfBlob = new Blob([response.data], { type: 'application/pdf' })
+  printPdfBlob(pdfBlob)
+}
+
+const generateClientSidePDF = async () => {
   if (!pdfRef.value) return
 
   const options = {
@@ -86,30 +124,30 @@ const generatePDF = async () => {
     const pdfBlob = pdf.output('blob')
     printPdfBlob(pdfBlob)
   }
+}
 
-  function printPdfBlob(blob: Blob) {
-    const url = URL.createObjectURL(blob)
-    const iframe = document.createElement('iframe')
-    iframe.style.display = 'none'
-    iframe.src = url
-    document.body.appendChild(iframe)
-    // Use setTimeout since onload doesn't fire for PDF blobs in most browsers
-    setTimeout(() => {
-      try {
-        iframe.contentWindow?.print()
-      } catch (error) {
-        console.error('Erro ao imprimir PDF via iframe, tentando fallback:', error)
-        // Fallback: open in new tab
-        const newWindow = window.open(url, '_blank')
-        newWindow?.focus()
-        setTimeout(() => {
-          newWindow?.print()
-        }, 500)
-      }
-      document.body.removeChild(iframe)
-      URL.revokeObjectURL(url)
-    }, 500)
-  }
+const printPdfBlob = (blob: Blob) => {
+  const url = URL.createObjectURL(blob)
+  const iframe = document.createElement('iframe')
+  iframe.style.display = 'none'
+  iframe.src = url
+  document.body.appendChild(iframe)
+  // Use setTimeout since onload doesn't fire for PDF blobs in most browsers
+  setTimeout(() => {
+    try {
+      iframe.contentWindow?.print()
+    } catch (error) {
+      console.error('Erro ao imprimir PDF via iframe, tentando fallback:', error)
+      // Fallback: open in new tab
+      const newWindow = window.open(url, '_blank')
+      newWindow?.focus()
+      setTimeout(() => {
+        newWindow?.print()
+      }, 500)
+    }
+    document.body.removeChild(iframe)
+    URL.revokeObjectURL(url)
+  }, 500)
 
   emit('pdfGenerated', props.mode)
 }
@@ -424,13 +462,24 @@ const getSizeBadges = (item: any) => {
       <p class="mt-1">Sistema Lizzie - Gestão Empresarial | Este documento é oficial e foi gerado automaticamente pelo sistema.</p>
     </div>
 
+    <!-- Error Message -->
+    <div v-if="error" class="error-message">
+      <p>{{ error }}</p>
+    </div>
+
     <!-- Buttons -->
     <div v-if="showButton && !preview" class="text-center mt-4 no-print space-x-4">
-      <button @click="previewPDF" class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-medium shadow-md">
+      <button @click="previewPDF" class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-medium shadow-md" :disabled="loading">
         Preview PDF
       </button>
-      <button @click="generatePDF" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-md">
-        Imprimir PDF
+      <button @click="generatePDF" :disabled="loading" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-md disabled:opacity-50">
+        <span v-if="loading" class="inline-block mr-2">
+          <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        </span>
+        {{ loading ? 'Gerando PDF...' : 'Imprimir PDF' }}
       </button>
     </div>
   </div>
@@ -504,6 +553,16 @@ strong {
   display: block;
 }
 
+.error-message {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  padding: 12px;
+  margin: 16px 0;
+  color: #dc2626;
+  text-align: center;
+}
+
 @media print {
   .print-container {
     width: 100%;
@@ -523,6 +582,9 @@ strong {
   }
   .border-gray-300 {
     border-color: #d1d5db !important;
+  }
+  .error-message {
+    display: none !important;
   }
 }
 </style>

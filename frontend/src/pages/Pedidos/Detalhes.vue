@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, User, Package, ShoppingCart, Loader2, AlertCircle, Save, Plus, Pencil, Trash2, X, Printer } from 'lucide-vue-next'
+import { ArrowLeft, User, Package, ShoppingCart, Loader2, AlertCircle, Save, Plus, Pencil, Trash2, X, Printer, FileText } from 'lucide-vue-next'
 import PedidoPrint from '@/components/PedidoPrint.vue'
+import PdfViewer from '@/components/PdfViewer.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -95,6 +96,12 @@ const newStatus = ref<number | null>(null) // Ref for the new status value
 const showPreviewModal = ref(false)
 const printMode = ref<'complete' | 'summary' | null>(null)
 const printOption = ref<string>('')
+
+// PDF Viewer Modal
+const showPdfModal = ref(false)
+const pdfUrl = ref<string>('')
+const isGeneratingPdf = ref(false)
+const pdfError = ref<string>('')
 
 const produtos = ref<Produto[]>([])
 const isLoadingProdutos = ref(false)
@@ -343,13 +350,19 @@ const updateOrderStatus = async () => {
 
   try {
     // Assume API endpoint for status update is PUT /api/pedidos/:id/status
-    const response = await apiClient.put(`/api/pedidos/${pedido.value.id_pedido}/status`, { 
-      status: newStatus.value 
+    const response = await apiClient.put(`/api/pedidos/${pedido.value.id_pedido}/status`, {
+      status: newStatus.value
     })
     // Update local state to reflect the change immediately
     if (pedido.value) {
       pedido.value.status = response.data?.data?.status !== undefined ? response.data.data.status : newStatus.value
     }
+
+    // Auto-print PDF when status changes to Concluído (4)
+    if (newStatus.value === 4) {
+      await autoPrintCompletedOrder()
+    }
+
     // Optionally re-fetch all details, or just update the status badge
     // fetchPedidoDetalhes()
   } catch (error: any) {
@@ -357,6 +370,49 @@ const updateOrderStatus = async () => {
     console.error('Failed to update order status:', error)
   } finally {
     isUpdatingStatus.value = false
+  }
+}
+
+const autoPrintCompletedOrder = async () => {
+  try {
+    // Generate and print PDF automatically for completed orders
+    const response = await apiClient.post(`/api/pdf/pedido/${pedido.value?.id_pedido}`, {
+      format: 'pdf',
+      paper_size: 'a4',
+      orientation: 'portrait',
+      include_qr: true // Include QR code for completed orders
+    }, {
+      responseType: 'blob'
+    })
+
+    const pdfBlob = new Blob([response.data], { type: 'application/pdf' })
+    const url = URL.createObjectURL(pdfBlob)
+
+    // Auto-print the PDF
+    const iframe = document.createElement('iframe')
+    iframe.style.display = 'none'
+    iframe.src = url
+    document.body.appendChild(iframe)
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.print()
+      } catch (error) {
+        console.error('Erro ao imprimir PDF automaticamente:', error)
+        // Fallback: open in new tab
+        const newWindow = window.open(url, '_blank')
+        newWindow?.focus()
+        setTimeout(() => {
+          newWindow?.print()
+        }, 500)
+      }
+      document.body.removeChild(iframe)
+      URL.revokeObjectURL(url)
+    }, 500)
+
+  } catch (error) {
+    console.error('Erro ao gerar PDF automaticamente para pedido concluído:', error)
+    // Don't show error to user for auto-print failures
   }
 }
 
@@ -373,6 +429,53 @@ const onPdfGenerated = (mode: 'complete' | 'summary') => {
   if (mode === 'complete') {
     newStatus.value = 2
     updateOrderStatus()
+  }
+}
+
+const showPdfPreview = async () => {
+  if (!pedido.value) return
+
+  isGeneratingPdf.value = true
+  pdfError.value = ''
+
+  try {
+    const response = await apiClient.post(`/api/pdf/pedido/${pedido.value.id_pedido}`, {
+      format: 'pdf',
+      paper_size: 'a4',
+      orientation: 'portrait',
+      include_qr: true
+    }, {
+      responseType: 'blob'
+    })
+
+    const pdfBlob = new Blob([response.data], { type: 'application/pdf' })
+    pdfUrl.value = URL.createObjectURL(pdfBlob)
+    showPdfModal.value = true
+  } catch (error: any) {
+    pdfError.value = 'Erro ao gerar PDF: ' + (error.response?.data?.message || error.message)
+    console.error('Erro ao gerar PDF:', error)
+  } finally {
+    isGeneratingPdf.value = false
+  }
+}
+
+const closePdfModal = () => {
+  showPdfModal.value = false
+  if (pdfUrl.value) {
+    URL.revokeObjectURL(pdfUrl.value)
+    pdfUrl.value = ''
+  }
+}
+
+const printPdf = () => {
+  if (pdfUrl.value) {
+    const printWindow = window.open(pdfUrl.value, '_blank')
+    if (printWindow) {
+      printWindow.focus()
+      setTimeout(() => {
+        printWindow.print()
+      }, 500)
+    }
   }
 }
 
@@ -449,20 +552,39 @@ watch(printOption, (newVal) => {
             </Button>
           </div>
 
-          <!-- Print Select -->
-          <Select v-model="printOption">
-            <SelectTrigger class="w-[180px] h-10 rounded-lg">
-              <SelectValue placeholder="Imprimir..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Imprimir Completo" :disabled="!pedido || pedido.itens.length === 0">
-                <Printer class="w-4 h-4 mr-2" /> Imprimir Completo
-              </SelectItem>
-              <SelectItem value="Imprimir Resumido">
-                <Printer class="w-4 h-4 mr-2" /> Imprimir Resumido
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          <!-- Print Options -->
+          <div class="flex items-center gap-2">
+            <Select v-model="printOption">
+              <SelectTrigger class="w-[180px] h-10 rounded-lg">
+                <SelectValue placeholder="Imprimir..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Imprimir Completo" :disabled="!pedido || pedido.itens.length === 0">
+                  <Printer class="w-4 h-4 mr-2" /> Imprimir Completo
+                </SelectItem>
+                <SelectItem value="Imprimir Resumido">
+                  <Printer class="w-4 h-4 mr-2" /> Imprimir Resumido
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            <!-- PDF Preview Button -->
+            <Button
+              @click="showPdfPreview"
+              :disabled="isGeneratingPdf || !pedido"
+              variant="outline"
+              class="h-10 rounded-lg border-blue-200 hover:border-blue-300 hover:bg-blue-50"
+            >
+              <template v-if="isGeneratingPdf">
+                <Loader2 class="w-4 h-4 animate-spin mr-2" />
+                Gerando...
+              </template>
+              <template v-else>
+                <FileText class="w-4 h-4 mr-2" />
+                Ver PDF
+              </template>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent class="p-6 space-y-4">
           <div class="grid grid-cols-2 gap-4">
@@ -713,5 +835,50 @@ watch(printOption, (newVal) => {
 
     <!-- Preview Modal -->
     <PedidoPrint v-if="showPreviewModal && printMode" :pedido="pedido" :cliente="cliente" :mode="printMode" :showButton="true" :preview="true" @closePreview="showPreviewModal = false" @pdfGenerated="onPdfGenerated" />
+
+    <!-- PDF Preview Modal -->
+    <div v-if="showPdfModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
+        <div class="flex justify-between items-center p-4 border-b bg-gray-50">
+          <h2 class="text-lg font-semibold flex items-center gap-2">
+            <FileText class="w-5 h-5" />
+            Preview do PDF - Pedido #{{ pedido?.id_pedido }}
+          </h2>
+          <Button @click="closePdfModal" variant="ghost" size="icon" class="h-8 w-8 rounded-full">
+            <X class="w-4 h-4" />
+          </Button>
+        </div>
+
+        <div v-if="pdfError" class="p-4 bg-red-50 border-b border-red-200">
+          <div class="flex items-center gap-2 text-red-700">
+            <AlertCircle class="w-4 h-4" />
+            <span class="text-sm">{{ pdfError }}</span>
+          </div>
+        </div>
+
+        <div class="p-4">
+          <PdfViewer
+            :pdfUrl="pdfUrl"
+            :width="800"
+            :height="600"
+            v-if="pdfUrl && !pdfError"
+          />
+        </div>
+
+        <div class="flex justify-end gap-3 p-4 border-t bg-gray-50">
+          <Button @click="closePdfModal" variant="outline">
+            Fechar
+          </Button>
+          <Button
+            @click="printPdf"
+            :disabled="!pdfUrl"
+            class="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <Printer class="w-4 h-4 mr-2" />
+            Imprimir
+          </Button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
