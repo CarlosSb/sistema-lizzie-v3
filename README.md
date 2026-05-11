@@ -43,6 +43,7 @@ DB_PORT=3306
 DB_DATABASE=db_lizzie
 DB_USERNAME=root
 DB_PASSWORD=
+DOCUMENT_TTL_HOURS=168
 ```
 
 O frontend lê a URL da API em `frontend/.env`:
@@ -157,6 +158,18 @@ Rotas protegidas por JWT:
 | Estoque | `GET /api/estoque`, `GET /api/estoque/{id}`, `GET /api/estoque/baixo`, `GET /api/estoque/resumo`, `GET /api/estoque/movimentacao`, `POST /api/estoque/entrada`, `POST /api/estoque/saida`, `POST /api/estoque/reservar`, `POST /api/estoque/liberar` |
 | Relatórios | `GET /api/relatorios/vendas`, `GET /api/relatorios/vendedores`, `GET /api/relatorios/produtos`, `GET /api/relatorios/estatisticas`, `GET /api/relatorios/insights`, `GET /api/relatorios/clientes`, `GET /api/relatorios/clientes/{id}` |
 | PDFs | `POST /api/pdf/pedido/{id}`, `POST /api/pdf/etiqueta/{id}`, `POST /api/pdf/carne/{id}`, `POST /api/pdf/recibo/{id}`, `POST /api/pdf/relatorio/vendas`, `POST /api/pdf/relatorio/vendedores`, `POST /api/pdf/relatorio/produtos` |
+| Documentos | `GET /api/documents/pedido/{id}/preview`, `POST /api/documents/pedido/{id}/generate`, `GET /api/documents/{documentId}/metadata`, `GET /api/documents/{documentId}/content`, `POST /api/documents/cleanup` |
+
+### Limpeza De Documentos
+
+- Os artefatos de PDF gerados em `api/storage/app/documents` usam TTL configurável por `DOCUMENT_TTL_HOURS` (padrão: `168` horas).
+- A limpeza automática roda durante geração de novos documentos.
+- Para limpeza manual sob demanda, use:
+
+```bash
+curl -X POST http://localhost:8000/api/documents/cleanup \
+  -H "Authorization: Bearer <token>"
+```
 
 ## Estrutura
 
