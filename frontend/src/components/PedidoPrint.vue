@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import axios from 'axios'
-import html2canvas from 'html2canvas'
-import jsPDF from 'jspdf'
-// @ts-ignore
-import html2pdf from 'html2pdf.js'
+import apiClient from '@/lib/axios'
 
 interface Props {
   pedido: any
@@ -16,7 +12,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  useServerSide: false
+  useServerSide: true
 })
 
 const emit = defineEmits<{
@@ -25,7 +21,6 @@ const emit = defineEmits<{
   closePreview: []
 }>()
 
-const pdfRef = ref<any>(null)
 const loading = ref(false)
 const error = ref<string>('')
 
@@ -42,11 +37,7 @@ const generatePDF = async () => {
   error.value = ''
 
   try {
-    if (props.useServerSide) {
-      await generateServerSidePDF()
-    } else {
-      await generateClientSidePDF()
-    }
+    await generateServerSidePDF()
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Erro ao gerar PDF'
     console.error('Erro ao gerar PDF:', err)
@@ -56,7 +47,7 @@ const generatePDF = async () => {
 }
 
 const generateServerSidePDF = async () => {
-  const response = await axios.post(`/api/pdf/pedido/${props.pedido.id_pedido}`, {
+  const response = await apiClient.post(`/api/pdf/pedido/${props.pedido.id_pedido}`, {
     format: 'pdf',
     paper_size: 'a4',
     orientation: 'portrait',
@@ -69,85 +60,47 @@ const generateServerSidePDF = async () => {
   printPdfBlob(pdfBlob)
 }
 
-const generateClientSidePDF = async () => {
-  if (!pdfRef.value) return
-
-  const options = {
-    margin: 10,
-    filename: 'pedido-' + props.pedido.id_pedido + '-' + props.mode + '.pdf',
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: {
-      scale: 2,
-      onclone: (clonedDoc: Document) => {
-        // Remove all stylesheets to avoid unsupported color functions
-        clonedDoc.querySelectorAll('link[rel="stylesheet"], style').forEach(el => el.remove());
-        // Set inline styles from computed styles
-        clonedDoc.querySelectorAll('*').forEach(el => {
-          const htmlEl = el as HTMLElement;
-          const computed = window.getComputedStyle(el);
-          htmlEl.style.cssText = '';
-          htmlEl.style.backgroundColor = computed.backgroundColor;
-          htmlEl.style.color = computed.color;
-          htmlEl.style.fontSize = computed.fontSize;
-          htmlEl.style.fontFamily = computed.fontFamily;
-          htmlEl.style.fontWeight = computed.fontWeight;
-          htmlEl.style.textAlign = computed.textAlign;
-          htmlEl.style.padding = computed.padding;
-          htmlEl.style.margin = computed.margin;
-          htmlEl.style.border = computed.border;
-          htmlEl.style.borderRadius = computed.borderRadius;
-          htmlEl.style.boxShadow = computed.boxShadow;
-          htmlEl.style.width = computed.width;
-          htmlEl.style.height = computed.height;
-          htmlEl.style.display = computed.display;
-          htmlEl.style.position = computed.position;
-          htmlEl.style.lineHeight = computed.lineHeight;
-          // Add more if needed
-        });
-      }
-    },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-  }
-
-  try {
-    const pdfBlob = await html2pdf().set(options).from(pdfRef.value as HTMLElement).outputPdf('blob')
-    printPdfBlob(pdfBlob)
-  } catch (error) {
-    console.error('Erro ao gerar PDF com html2pdf.js, tentando fallback:', error)
-    // Fallback with jsPDF + html2canvas
-    const canvas = await html2canvas(pdfRef.value as HTMLElement, options.html2canvas)
-    const imgData = canvas.toDataURL(options.image.type, options.image.quality)
-    const pdf = new jsPDF('portrait', 'mm', 'a4')
-    const imgWidth = pdf.internal.pageSize.getWidth()
-    const imgHeight = (canvas.height * imgWidth) / canvas.width
-    pdf.addImage(imgData, options.image.type.toUpperCase(), 0, 0, imgWidth, imgHeight)
-    const pdfBlob = pdf.output('blob')
-    printPdfBlob(pdfBlob)
-  }
-}
-
 const printPdfBlob = (blob: Blob) => {
   const url = URL.createObjectURL(blob)
   const iframe = document.createElement('iframe')
   iframe.style.display = 'none'
   iframe.src = url
   document.body.appendChild(iframe)
-  // Use setTimeout since onload doesn't fire for PDF blobs in most browsers
-  setTimeout(() => {
+  let handled = false
+
+  const cleanup = (revokeDelayMs = 0) => {
+    if (iframe.parentNode) {
+      iframe.parentNode.removeChild(iframe)
+    }
+    setTimeout(() => URL.revokeObjectURL(url), revokeDelayMs)
+  }
+
+  const fallbackOpenAndPrint = () => {
+    const newWindow = window.open(url, '_blank')
+    newWindow?.focus()
+    setTimeout(() => {
+      newWindow?.print()
+    }, 500)
+  }
+
+  const attemptPrint = () => {
+    if (handled) return
+    handled = true
     try {
+      iframe.contentWindow?.focus()
       iframe.contentWindow?.print()
     } catch (error) {
       console.error('Erro ao imprimir PDF via iframe, tentando fallback:', error)
-      // Fallback: open in new tab
-      const newWindow = window.open(url, '_blank')
-      newWindow?.focus()
-      setTimeout(() => {
-        newWindow?.print()
-      }, 500)
+      fallbackOpenAndPrint()
+      cleanup(60000)
+      return
+    } finally {
+      cleanup()
     }
-    document.body.removeChild(iframe)
-    URL.revokeObjectURL(url)
-  }, 500)
+  }
+
+  iframe.onload = attemptPrint
+  setTimeout(attemptPrint, 1200)
 
   emit('pdfGenerated', props.mode)
 }
