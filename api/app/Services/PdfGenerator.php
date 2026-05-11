@@ -5,6 +5,7 @@ namespace App\Services;
 use TCPDF;
 use Dompdf\Dompdf;
 use Dompdf\Options;
+use chillerlan\QRCode\Common\EccLevel;
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
 use Illuminate\Support\Facades\Storage;
@@ -144,12 +145,11 @@ class PdfGenerator
 
     public function generateQRCode(string $data, int $size = 100): string
     {
+        $scale = max(1, (int) round($size / 25));
         $options = new QROptions([
-            'version' => 5,
-            'outputType' => QRCode::OUTPUT_IMAGE_PNG,
-            'eccLevel' => QRCode::ECC_L,
-            'scale' => 5,
-            'imageBase64' => true,
+            'eccLevel' => EccLevel::L,
+            'scale' => $scale,
+            'outputBase64' => true,
         ]);
 
         $qrcode = new QRCode($options);

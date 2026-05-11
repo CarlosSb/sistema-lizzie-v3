@@ -27,7 +27,7 @@ class PdfController extends Controller
             $pdfContent = $this->pdfGenerator->generate($data, $options);
 
             return $this->sendPdfResponse($pdfContent, 'pedido-' . $id . '.pdf');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao gerar PDF do pedido: ' . $e->getMessage()
@@ -47,7 +47,7 @@ class PdfController extends Controller
             $pdfContent = $this->pdfGenerator->generate($data, $options);
 
             return $this->sendPdfResponse($pdfContent, 'etiqueta-' . $id . '.pdf');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao gerar etiqueta: ' . $e->getMessage()
@@ -65,7 +65,7 @@ class PdfController extends Controller
             $pdfContent = $this->pdfGenerator->generate($data, $options);
 
             return $this->sendPdfResponse($pdfContent, 'carne-' . $id . '.pdf');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao gerar carnê: ' . $e->getMessage()
@@ -82,7 +82,7 @@ class PdfController extends Controller
             $pdfContent = $this->pdfGenerator->generate($data, $options);
 
             return $this->sendPdfResponse($pdfContent, 'recibo-' . $id . '.pdf');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao gerar recibo: ' . $e->getMessage()
@@ -99,7 +99,7 @@ class PdfController extends Controller
             $pdfContent = $this->pdfGenerator->generate($data, $options);
 
             return $this->sendPdfResponse($pdfContent, 'relatorio-vendas.pdf');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao gerar relatório de vendas: ' . $e->getMessage()
@@ -116,7 +116,7 @@ class PdfController extends Controller
             $pdfContent = $this->pdfGenerator->generate($data, $options);
 
             return $this->sendPdfResponse($pdfContent, 'relatorio-vendedores.pdf');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao gerar relatório de vendedores: ' . $e->getMessage()
@@ -133,7 +133,7 @@ class PdfController extends Controller
             $pdfContent = $this->pdfGenerator->generate($data, $options);
 
             return $this->sendPdfResponse($pdfContent, 'relatorio-produtos.pdf');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao gerar relatório de produtos: ' . $e->getMessage()
@@ -173,7 +173,7 @@ class PdfController extends Controller
     {
         if ($options->includeQR) {
             $qrData = 'PEDIDO-' . $data->pedido->id_pedido . '-' . date('Y-m-d');
-            $data->qrCodeUrl = 'data:image/png;base64,' . base64_encode($this->pdfGenerator->generateQRCode($qrData, 100));
+            $data->qrCodeUrl = $this->pdfGenerator->generateQRCode($qrData, 100);
         }
     }
 

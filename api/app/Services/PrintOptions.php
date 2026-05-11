@@ -10,6 +10,7 @@ class PrintOptions
     public string $paperSize = 'a4';
     public string $orientation = 'portrait';
     public int $copies = 1;
+    public string $mode = 'complete';
 
     public function __construct(string $templateId)
     {
