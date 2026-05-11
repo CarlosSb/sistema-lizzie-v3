@@ -224,6 +224,7 @@ show_help() {
     echo "  build              Build para produção"
     echo "  migrate            Executa migrations"
     echo "  rollback           Desfaz migrations (drop tables)"
+    echo "  docs-cleanup       Executa limpeza manual de documentos PDF"
     echo ""
     echo -e "${CYAN}PHP Version Manager:${NC}"
     echo "  install-phpbrew    Instala phpbrew (para múltiplas versões PHP)"
@@ -372,6 +373,51 @@ cmd_rollback() {
     php lizzie.php rollback
 }
 
+cmd_docs_cleanup() {
+    local api_base="${LIZZIE_API_BASE:-http://localhost:8000}"
+    local user_name="${LIZZIE_USER:-admin}"
+    local user_pass="${LIZZIE_PASS:-admin123}"
+
+    if ! command -v curl >/dev/null 2>&1; then
+        echo -e "${RED}curl não encontrado. Instale curl para usar docs-cleanup.${NC}"
+        return 1
+    fi
+
+    if ! command -v php >/dev/null 2>&1; then
+        echo -e "${RED}php não encontrado. Necessário para parse do token.${NC}"
+        return 1
+    fi
+
+    echo -e "${YELLOW}Executando limpeza manual de documentos...${NC}"
+    echo -e "${BLUE}API:${NC} ${api_base}"
+
+    local login_payload
+    login_payload="{\"usuario\":\"${user_name}\",\"senha\":\"${user_pass}\"}"
+
+    local token
+    token="$(
+        curl -sS --max-time 10 -X POST "${api_base}/api/auth/login" \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json' \
+            -d "${login_payload}" \
+        | php -r '$j=json_decode(stream_get_contents(STDIN), true); echo $j["data"]["access_token"] ?? "";'
+    )"
+
+    if [ -z "$token" ]; then
+        echo -e "${RED}Falha ao autenticar para cleanup. Verifique LIZZIE_USER/LIZZIE_PASS.${NC}"
+        return 1
+    fi
+
+    local result
+    result="$(
+        curl -sS --max-time 20 -X POST "${api_base}/api/documents/cleanup" \
+            -H "Authorization: Bearer ${token}" \
+            -H 'Accept: application/json'
+    )"
+
+    echo -e "${GREEN}Resposta:${NC} ${result}"
+}
+
 # Main
 case "${1:-help}" in
     check)            cmd_check ;;
@@ -385,6 +431,7 @@ case "${1:-help}" in
     build)            cmd_build ;;
     migrate)          cmd_migrate ;;
     rollback)         cmd_rollback ;;
+    docs-cleanup)     cmd_docs_cleanup ;;
     help|--help|-h)   show_help ;;
     *)                echo -e "${RED}Comando desconhecido: $1${NC}"; show_help; exit 1 ;;
 esac

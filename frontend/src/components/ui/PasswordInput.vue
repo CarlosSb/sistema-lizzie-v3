@@ -38,7 +38,7 @@ const togglePassword = () => {
       :placeholder="placeholder"
       :disabled="disabled"
       :class="class"
-      @update:modelValue="$emit('update:modelValue', $event)"
+      @update:modelValue="$emit('update:modelValue', String($event))"
     />
     <Button
       type="button"
