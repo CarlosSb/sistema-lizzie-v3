@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue'
-import { Plus, Search, MoreHorizontal, User, Trash2, Loader2, AlertCircle, Pencil } from 'lucide-vue-next'
+import { Plus, Search, User, Trash2, Loader2, AlertCircle, Pencil, Eye } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -19,14 +20,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Card } from '@/components/ui/card'
 import apiClient from '@/lib/axios'
 
@@ -41,9 +34,30 @@ interface Vendedor {
 const vendedores = ref<Vendedor[]>([])
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const router = useRouter()
 
 const search = ref('')
 const statusFilter = ref<'all' | '1' | '0'>('all')
+
+const goToVendedorDetalhes = (id: number) => {
+  router.push(`/vendedores/${id}`)
+}
+
+const goToEditVendedor = (id: number) => {
+  router.push(`/vendedores/${id}/editar`)
+}
+
+const deleteVendedor = async (id: number) => {
+  if (!window.confirm('Tem certeza que deseja excluir este vendedor? Esta ação não pode ser desfeita.')) return
+
+  try {
+    await apiClient.delete(`/api/vendedores/${id}`)
+    await fetchVendedores()
+  } catch (error: any) {
+    errorMessage.value = 'Erro ao excluir vendedor.'
+    console.error('Failed to delete vendedor:', error)
+  }
+}
 
 const fetchVendedores = async () => {
   isLoading.value = true
@@ -93,7 +107,7 @@ const getStatusClass = (status: number) => {
         <p class="text-muted-foreground text-sm font-medium mt-1">Gerencie a equipe de vendas.</p>
       </div>
       
-      <Button @click="$router.push('/vendedores/novo')" class="bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl h-11 px-6 shadow-lg shadow-primary/20 flex gap-2">
+      <Button @click="router.push('/vendedores/novo')" class="bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl h-11 px-6 shadow-lg shadow-primary/20 flex gap-2">
         <Plus class="w-4 h-4" />
         Novo Vendedor
       </Button>
@@ -142,12 +156,27 @@ const getStatusClass = (status: number) => {
             <TableHead class="text-xs font-bold uppercase tracking-wider py-5">Contato</TableHead>
             <TableHead class="text-xs font-bold uppercase tracking-wider py-5">Usuário</TableHead>
             <TableHead class="text-xs font-bold uppercase tracking-wider py-5">Status</TableHead>
-            <TableHead class="text-right py-5 px-8"></TableHead>
+            <TableHead class="text-right py-5 px-8">Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow v-for="vendedor in filteredVendedores" :key="vendedor.id_vendedor" class="hover:bg-accent/30 transition-colors group">
-            <TableCell class="py-5 px-8 font-bold text-sm">#{{ vendedor.id_vendedor }}</TableCell>
+          <TableRow
+            v-for="vendedor in filteredVendedores"
+            :key="vendedor.id_vendedor"
+            class="group cursor-pointer hover:bg-accent/30 transition-colors"
+            tabindex="0"
+            role="button"
+            :aria-label="`Abrir detalhes do vendedor ${vendedor.id_vendedor}`"
+            @click="goToVendedorDetalhes(vendedor.id_vendedor)"
+            @keydown.enter.prevent="goToVendedorDetalhes(vendedor.id_vendedor)"
+            @keydown.space.prevent="goToVendedorDetalhes(vendedor.id_vendedor)"
+          >
+            <TableCell class="py-5 px-8 font-bold text-sm">
+              <div class="flex items-center gap-2">
+                <span>#{{ vendedor.id_vendedor }}</span>
+                <Eye class="h-3.5 w-3.5 text-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100" />
+              </div>
+            </TableCell>
             <TableCell class="py-5">
               <div class="flex items-center gap-3 text-left">
                 <span class="font-bold text-sm tracking-tight text-foreground/80">{{ vendedor.nome_vendedor }}</span>
@@ -165,28 +194,26 @@ const getStatusClass = (status: number) => {
               </Badge>
             </TableCell>
             <TableCell class="py-5 px-8 text-right">
-              <DropdownMenu>
-                <DropdownMenuTrigger as-child>
-                  <Button variant="ghost" size="icon" class="h-9 w-9 rounded-lg hover:bg-accent">
-                    <MoreHorizontal class="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" class="rounded-xl border shadow-xl w-48">
-                  <DropdownMenuLabel class="text-[10px] font-bold uppercase tracking-wider py-2 opacity-50 px-4 text-left">Ações</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem @click="$router.push(`/vendedores/${vendedor.id_vendedor}`)" class="text-xs font-bold py-2.5 cursor-pointer px-4 text-left">
-                    Ver Detalhes
-                  </DropdownMenuItem>
-                  <DropdownMenuItem @click="$router.push(`/vendedores/${vendedor.id_vendedor}/editar`)" class="text-xs font-bold py-2.5 cursor-pointer px-4 text-left">
-                    <Pencil class="w-4 h-4 mr-2" />
-                    Editar
-                  </DropdownMenuItem>
-                  <DropdownMenuItem class="text-xs font-bold py-2.5 cursor-pointer px-4 text-destructive focus:text-destructive text-left">
-                    <Trash2 class="w-4 h-4 mr-2 opacity-50" />
-                    Excluir
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div class="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="h-9 rounded-lg px-3 text-xs font-bold"
+                  @click.stop="goToEditVendedor(vendedor.id_vendedor)"
+                >
+                  <Pencil class="w-4 h-4 mr-2" />
+                  Editar
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="h-9 rounded-lg border-destructive/30 px-3 text-xs font-bold text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  @click.stop="deleteVendedor(vendedor.id_vendedor)"
+                >
+                  <Trash2 class="w-4 h-4 mr-2" />
+                  Excluir
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
           <TableRow v-if="filteredVendedores.length === 0">

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Search, Filter, ShoppingBag, MoreHorizontal, FileText, Trash2, Loader2, AlertCircle } from 'lucide-vue-next'
+import { Plus, Search, Filter, ShoppingBag, Trash2, Loader2, AlertCircle, Eye } from 'lucide-vue-next'
 import { watchDebounced } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,16 +22,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Card } from '@/components/ui/card'
 import apiClient from '@/lib/axios'
+import { getPedidoStatusClass, getPedidoStatusLabel } from '@/lib/pedidoStatus'
 
 interface Pedido {
   id_pedido: number
@@ -56,6 +49,22 @@ const pagination = ref<{ current_page: number; last_page: number; per_page: numb
 
 const goToPedidoDetalhes = (id: number) => {
   router.push({ name: 'pedido-detalhes', params: { id: id.toString() } })
+}
+
+const cancelPedido = async (pedido: Pedido) => {
+  if (pedido.status === 3) return
+  const confirmed = window.confirm(`Cancelar o pedido #${pedido.id_pedido}?${pedido.status === 4 ? ' O estoque será devolvido.' : ''}`)
+  if (!confirmed) return
+
+  isLoading.value = true
+  errorMessage.value = null
+  try {
+    await apiClient.put(`/api/pedidos/${pedido.id_pedido}/status`, { status: 3 })
+    await fetchPedidos()
+  } catch (error: any) {
+    errorMessage.value = error.response?.data?.message || 'Erro ao cancelar pedido.'
+    isLoading.value = false
+  }
 }
 
 const normalizePedidos = (payload: any): Pedido[] => {
@@ -124,23 +133,11 @@ watch(page, () => {
 })
 
 const getStatusClass = (status: number) => {
-  switch (status) {
-    case 1: return 'bg-blue-500/10 text-blue-600 border-blue-200 dark:border-blue-500/30' // ABERTO
-    case 2: return 'bg-amber-500/10 text-amber-600 border-amber-200 dark:border-amber-500/30' // PENDENTE
-    case 3: return 'bg-rose-500/10 text-rose-600 border-rose-200 dark:border-rose-500/30' // CANCELADO
-    case 4: return 'bg-emerald-500/10 text-emerald-600 border-emerald-200 dark:border-emerald-500/30' // CONCLUÍDO
-    default: return ''
-  }
+  return getPedidoStatusClass(status)
 }
 
 const getStatusLabel = (status: number) => {
-  switch (status) {
-    case 1: return 'ABERTO'
-    case 2: return 'PENDENTE'
-    case 3: return 'CANCELADO'
-    case 4: return 'CONCLUÍDO'
-    default: return 'DESCONHECIDO'
-  }
+  return getPedidoStatusLabel(status)
 }
 </script>
 
@@ -215,12 +212,27 @@ const getStatusLabel = (status: number) => {
             <TableHead class="text-xs font-bold uppercase tracking-wider py-5">Data</TableHead>
             <TableHead class="text-xs font-bold uppercase tracking-wider py-5">Total</TableHead>
             <TableHead class="text-xs font-bold uppercase tracking-wider py-5">Status</TableHead>
-            <TableHead class="text-right py-5 px-8"></TableHead>
+            <TableHead class="text-right py-5 px-8">Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow v-for="pedido in pedidos" :key="pedido.id_pedido" class="hover:bg-accent/30 transition-colors group">
-            <TableCell class="py-5 px-8 font-bold text-sm">#{{ pedido.id_pedido }}</TableCell>
+          <TableRow
+            v-for="pedido in pedidos"
+            :key="pedido.id_pedido"
+            class="group cursor-pointer hover:bg-accent/30 transition-colors"
+            tabindex="0"
+            role="button"
+            :aria-label="`Abrir detalhes do pedido ${pedido.id_pedido}`"
+            @click="goToPedidoDetalhes(pedido.id_pedido)"
+            @keydown.enter.prevent="goToPedidoDetalhes(pedido.id_pedido)"
+            @keydown.space.prevent="goToPedidoDetalhes(pedido.id_pedido)"
+          >
+            <TableCell class="py-5 px-8 font-bold text-sm">
+              <div class="flex items-center gap-2">
+                <span>#{{ pedido.id_pedido }}</span>
+                <Eye class="h-3.5 w-3.5 text-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100" />
+              </div>
+            </TableCell>
             <TableCell class="py-5">
               <div class="flex items-center gap-3 text-left">
                 <span class="font-bold text-sm tracking-tight text-foreground/80">{{ pedido.razao_social || '-' }}</span>
@@ -239,25 +251,16 @@ const getStatusLabel = (status: number) => {
               </Badge>
             </TableCell>
             <TableCell class="py-5 px-8 text-right">
-              <DropdownMenu>
-                <DropdownMenuTrigger as-child>
-                  <Button variant="ghost" size="icon" class="h-9 w-9 rounded-lg hover:bg-accent">
-                    <MoreHorizontal class="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" class="rounded-xl border shadow-xl w-48">
-                  <DropdownMenuLabel class="text-[10px] font-bold uppercase tracking-wider py-2 opacity-50 px-4 text-left">Ações</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem @click="goToPedidoDetalhes(pedido.id_pedido)" class="text-xs font-bold py-2.5 cursor-pointer px-4 text-left">
-                    <FileText class="w-4 h-4 mr-2" />
-                    Ver Detalhes
-                  </DropdownMenuItem>
-                  <DropdownMenuItem class="text-xs font-bold py-2.5 cursor-pointer px-4 text-destructive focus:text-destructive text-left text-left">
-                    <Trash2 class="w-4 h-4 mr-2 opacity-50" />
-                    Cancelar
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-9 rounded-lg border-destructive/30 px-3 text-xs font-bold text-destructive hover:bg-destructive/10 hover:text-destructive"
+                :disabled="pedido.status === 3"
+                @click.stop="cancelPedido(pedido)"
+              >
+                <Trash2 class="w-4 h-4 mr-2" />
+                Remover
+              </Button>
             </TableCell>
           </TableRow>
           <TableRow v-if="pedidos.length === 0">

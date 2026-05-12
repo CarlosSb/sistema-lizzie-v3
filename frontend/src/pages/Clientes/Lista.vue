@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Search, MoreHorizontal, User, Trash2, Loader2, AlertCircle } from 'lucide-vue-next'
+import { Plus, Search, User, Trash2, Loader2, AlertCircle, Eye, Pencil } from 'lucide-vue-next'
 import { watchDebounced } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,14 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Card } from '@/components/ui/card'
 import apiClient from '@/lib/axios'
 
@@ -184,12 +176,27 @@ const getStatusClass = (status: number) => {
             <TableHead class="text-xs font-bold uppercase tracking-wider py-5">Responsável</TableHead>
             <TableHead class="text-xs font-bold uppercase tracking-wider py-5">CPF/CNPJ</TableHead>
             <TableHead class="text-xs font-bold uppercase tracking-wider py-5">Status</TableHead>
-            <TableHead class="text-right py-5 px-8"></TableHead>
+            <TableHead class="text-right py-5 px-8">Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow v-for="cliente in clientes" :key="cliente.id_cliente" class="hover:bg-accent/30 transition-colors group">
-            <TableCell class="py-5 px-8 font-bold text-sm">#{{ cliente.id_cliente }}</TableCell>
+          <TableRow
+            v-for="cliente in clientes"
+            :key="cliente.id_cliente"
+            class="group cursor-pointer hover:bg-accent/30 transition-colors"
+            tabindex="0"
+            role="button"
+            :aria-label="`Abrir detalhes do cliente ${cliente.id_cliente}`"
+            @click="goToClienteDetalhes(cliente.id_cliente)"
+            @keydown.enter.prevent="goToClienteDetalhes(cliente.id_cliente)"
+            @keydown.space.prevent="goToClienteDetalhes(cliente.id_cliente)"
+          >
+            <TableCell class="py-5 px-8 font-bold text-sm">
+              <div class="flex items-center gap-2">
+                <span>#{{ cliente.id_cliente }}</span>
+                <Eye class="h-3.5 w-3.5 text-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100" />
+              </div>
+            </TableCell>
             <TableCell class="py-5">
               <div class="flex items-center gap-3 text-left">
                 <span class="font-bold text-sm tracking-tight text-foreground/80">{{ cliente.nome_fantasia }}</span>
@@ -207,27 +214,26 @@ const getStatusClass = (status: number) => {
               </Badge>
             </TableCell>
             <TableCell class="py-5 px-8 text-right">
-              <DropdownMenu>
-                <DropdownMenuTrigger as-child>
-                  <Button variant="ghost" size="icon" class="h-9 w-9 rounded-lg hover:bg-accent">
-                    <MoreHorizontal class="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" class="rounded-xl border shadow-xl w-48">
-                  <DropdownMenuLabel class="text-[10px] font-bold uppercase tracking-wider py-2 opacity-50 px-4 text-left">Ações</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem @click="goToClienteDetalhes(cliente.id_cliente)" class="text-xs font-bold py-2.5 cursor-pointer px-4 text-left">
-                    Ver Detalhes
-                  </DropdownMenuItem>
-                  <DropdownMenuItem @click="goToEditCliente(cliente.id_cliente)" class="text-xs font-bold py-2.5 cursor-pointer px-4 text-left">
-                    Editar
-                  </DropdownMenuItem>
-                  <DropdownMenuItem @click="deleteCliente(cliente.id_cliente)" class="text-xs font-bold py-2.5 cursor-pointer px-4 text-destructive focus:text-destructive text-left">
-                    <Trash2 class="w-4 h-4 mr-2 opacity-50" />
-                    Excluir
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div class="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="h-9 rounded-lg px-3 text-xs font-bold"
+                  @click.stop="goToEditCliente(cliente.id_cliente)"
+                >
+                  <Pencil class="w-4 h-4 mr-2" />
+                  Editar
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="h-9 rounded-lg border-destructive/30 px-3 text-xs font-bold text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  @click.stop="deleteCliente(cliente.id_cliente)"
+                >
+                  <Trash2 class="w-4 h-4 mr-2" />
+                  Excluir
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
           <TableRow v-if="clientes.length === 0">

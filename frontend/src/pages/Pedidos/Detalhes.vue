@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, watch, shallowRef } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowLeft, User, Package, ShoppingCart, Loader2, AlertCircle, Save, Plus, Pencil, Trash2, X, Printer, FileText } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
@@ -15,7 +15,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  TabsRoot as Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from 'reka-ui'
 import apiClient from '@/lib/axios'
+import {
+  PEDIDO_STATUS,
+  getPedidoStatusClass,
+  getPedidoStatusLabel,
+  getPedidoStatusTransitions,
+  isPedidoStatusPrintable,
+} from '@/lib/pedidoStatus'
 
 interface PedidoDetalhes {
   id_pedido: number
@@ -85,13 +106,15 @@ interface ClienteDetalhes {
 }
 
 const route = useRoute()
-const pedido = ref<PedidoDetalhes | null>(null)
-const cliente = ref<ClienteDetalhes | null>(null)
+const pedido = shallowRef<PedidoDetalhes | null>(null)
+const cliente = shallowRef<ClienteDetalhes | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
 const isUpdatingStatus = ref(false) // For loading state on status update
 const newStatus = ref<number | null>(null) // Ref for the new status value
 const printOption = ref<string>('')
+const showCancelCompletedDialog = ref(false)
+const pendingStatusChange = ref<number | null>(null)
 
 // PDF Viewer Modal
 const showPdfModal = ref(false)
@@ -215,6 +238,25 @@ const isAutoPrintingCompletedOrder = ref(false)
 
 const produtos = ref<Produto[]>([])
 const isLoadingProdutos = ref(false)
+
+const itemSearch = ref('')
+const selectedItems = ref<Set<number>>(new Set())
+const filteredItens = computed(() => {
+  if (!itemSearch.value) return pedido.value?.itens || []
+  const search = itemSearch.value.toLowerCase()
+  return (pedido.value?.itens || []).filter(item =>
+    item.produto.toLowerCase().includes(search) ||
+    item.referencia.toLowerCase().includes(search)
+  )
+})
+
+const toggleSelection = (id: number) => {
+  if (selectedItems.value.has(id)) {
+    selectedItems.value.delete(id)
+  } else {
+    selectedItems.value.add(id)
+  }
+}
 
 const itemFormProductId = ref<string>('')
 const itemFormRegiao = ref<'nordeste' | 'norte'>('nordeste')
@@ -494,6 +536,21 @@ const removeItem = async (itemId: number) => {
   }
 }
 
+const bulkDelete = async () => {
+  if (!window.confirm(`Remover ${selectedItems.value.size} itens do pedido?`)) return
+  isSavingItem.value = true
+  errorMessage.value = null
+  try {
+    await Promise.all(Array.from(selectedItems.value).map(id => apiClient.delete(`/api/itens/${id}`)))
+    selectedItems.value.clear()
+    await fetchPedidoDetalhes()
+  } catch (error: any) {
+    errorMessage.value = error.response?.data?.message || 'Erro ao remover itens.'
+  } finally {
+    isSavingItem.value = false
+  }
+}
+
 const selectedProduct = computed(() => produtos.value.find(p => String(p.id_produto) === itemFormProductId.value) || null)
 const itemPieces = computed(() => sumQuantidades(itemFormQuantidades.value))
 const itemUnitPrice = computed(() => {
@@ -532,38 +589,20 @@ const fetchPedidoDetalhes = async () => {
 }
 
 const getStatusClass = (status: number) => {
-  switch (status) {
-    case 1: return 'bg-blue-500/10 text-blue-600 border-blue-200 dark:border-blue-500/30' // ABERTO
-    case 2: return 'bg-amber-500/10 text-amber-600 border-amber-200 dark:border-amber-500/30' // PENDENTE
-    case 3: return 'bg-rose-500/10 text-rose-600 border-rose-200 dark:border-rose-500/30' // CANCELADO
-    case 4: return 'bg-emerald-500/10 text-emerald-600 border-emerald-200 dark:border-emerald-500/30' // CONCLUÍDO
-    default: return ''
-  }
+  return getPedidoStatusClass(status)
 }
 
 const getStatusLabel = (status: number) => {
-  switch (status) {
-    case 1: return 'ABERTO'
-    case 2: return 'PENDENTE'
-    case 3: return 'CANCELADO'
-    case 4: return 'CONCLUÍDO'
-    default: return 'DESCONHECIDO'
-  }
+  return getPedidoStatusLabel(status)
 }
 
 const availableStatuses = computed(() => {
   if (!pedido.value) return []
-  const current = pedido.value.status
-  if (current === 1) { // ABERTO
-    return [{ value: 3, label: 'CANCELADO' }]
-  } else if (current === 2) { // PENDENTE
-    return [
-      { value: 4, label: 'CONCLUÍDO' },
-      { value: 3, label: 'CANCELADO' }
-    ]
-  } else {
-    return []
-  }
+  return getPedidoStatusTransitions(pedido.value.status)
+})
+
+const canPrintPedido = computed(() => {
+  return pedido.value ? isPedidoStatusPrintable(pedido.value.status) : false
 })
 
 onMounted(async () => {
@@ -575,10 +614,10 @@ const goBack = () => {
   window.history.back()
 }
 
-const updateOrderStatus = async () => {
-  if (!pedido.value || newStatus.value === null || isUpdatingStatus.value) return
+const applyOrderStatus = async (status: number) => {
+  if (!pedido.value || isUpdatingStatus.value) return
 
-  if (pedido.value.status === newStatus.value) {
+  if (pedido.value.status === status) {
     return
   }
 
@@ -589,10 +628,10 @@ const updateOrderStatus = async () => {
   try {
     const previousStatus = pedido.value.status
     const response = await apiClient.put(`/api/pedidos/${pedido.value.id_pedido}/status`, {
-      status: newStatus.value
+      status
     })
 
-    const updatedStatus = response.data?.data?.status !== undefined ? Number(response.data.data.status) : newStatus.value
+    const updatedStatus = response.data?.data?.status !== undefined ? Number(response.data.data.status) : status
     pedido.value.status = updatedStatus
     newStatus.value = updatedStatus
 
@@ -600,7 +639,7 @@ const updateOrderStatus = async () => {
     if (shouldAutoPrint) {
       const printed = await autoPrintCompletedOrder()
       if (!printed) {
-        autoPrintWarning.value = 'Pedido concluído. O navegador bloqueou ou falhou na impressão automática. Use "Prévia" para imprimir.'
+        autoPrintWarning.value = 'Pedido concluído. O navegador bloqueou ou falhou na impressão automática. Use a opção de impressão para tentar novamente.'
       }
     }
   } catch (error: any) {
@@ -609,6 +648,37 @@ const updateOrderStatus = async () => {
   } finally {
     isUpdatingStatus.value = false
   }
+}
+
+const updateOrderStatus = async () => {
+  if (!pedido.value || newStatus.value === null || isUpdatingStatus.value) return
+
+  const isCancelingCompletedPedido =
+    pedido.value.status === PEDIDO_STATUS.CONCLUIDO &&
+    newStatus.value === PEDIDO_STATUS.CANCELADO
+
+  if (isCancelingCompletedPedido) {
+    pendingStatusChange.value = newStatus.value
+    showCancelCompletedDialog.value = true
+    return
+  }
+
+  await applyOrderStatus(newStatus.value)
+}
+
+const closeCancelCompletedDialog = () => {
+  showCancelCompletedDialog.value = false
+  pendingStatusChange.value = null
+  if (pedido.value) {
+    newStatus.value = pedido.value.status
+  }
+}
+
+const confirmCancelCompletedPedido = async () => {
+  const status = pendingStatusChange.value ?? PEDIDO_STATUS.CANCELADO
+  showCancelCompletedDialog.value = false
+  pendingStatusChange.value = null
+  await applyOrderStatus(status)
 }
 
 const isGeneratingPdf = computed(() => pdfDocumentState.value === 'generating')
@@ -712,6 +782,7 @@ const closePdfModal = () => {
 }
 
 const printPedido = (mode: 'complete' | 'summary') => {
+  if (!canPrintPedido.value) return
   showPdfPreview(mode)
 }
 
@@ -911,166 +982,190 @@ watch(printOption, (newVal) => {
       Pedido não encontrado.
     </div>
 
-    <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <!-- Pedido Info Card -->
-      <Card class="lg:col-span-2 rounded-2xl border shadow-sm bg-card overflow-hidden">
-        <CardHeader class="border-b bg-muted/20 px-8 py-6 flex flex-row justify-between items-center">
-          <div>
-            <CardTitle class="text-lg font-bold flex items-center gap-2">
-              <ShoppingCart class="w-5 h-5 text-primary" /> Pedido #{{ pedido.id_pedido }}
-            </CardTitle>
-            <CardDescription class="text-xs font-medium mt-1">Detalhes e status do pedido</CardDescription>
-          </div>
-          
-          <!-- Status Update Section -->
-          <div class="flex items-center gap-3">
-              <Select v-model="newStatus" :disabled="availableStatuses.length === 0" class="w-[150px]">
-                <SelectTrigger class="h-10 rounded-lg border-dashed border-primary/30">
-                  <SelectValue :placeholder="getStatusLabel(pedido.status)" />
+    <Tabs v-else default-value="pedido" class="w-full space-y-6">
+      <TabsList class="grid w-full grid-cols-1 gap-2 rounded-2xl border bg-muted/30 p-1.5 shadow-sm sm:grid-cols-3">
+        <TabsTrigger
+          value="pedido"
+          class="group flex h-12 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold text-muted-foreground transition-all hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm"
+        >
+          <ShoppingCart class="h-4 w-4 transition-transform group-data-[state=active]:scale-110" />
+          Pedido
+        </TabsTrigger>
+        <TabsTrigger
+          value="cliente"
+          class="group flex h-12 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold text-muted-foreground transition-all hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm"
+        >
+          <User class="h-4 w-4 transition-transform group-data-[state=active]:scale-110" />
+          Cliente
+        </TabsTrigger>
+        <TabsTrigger
+          value="itens"
+          class="group flex h-12 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold text-muted-foreground transition-all hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm"
+        >
+          <Package class="h-4 w-4 transition-transform group-data-[state=active]:scale-110" />
+          Itens
+          <Badge variant="outline" class="ml-1 h-5 rounded-md px-1.5 text-[10px] font-black group-data-[state=active]:border-primary/30 group-data-[state=active]:bg-primary/10 group-data-[state=active]:text-primary">
+            {{ pedido.itens.length }}
+          </Badge>
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="pedido" class="outline-none data-[state=inactive]:hidden">
+        <Card class="rounded-2xl border shadow-sm bg-card overflow-hidden">
+          <CardHeader class="border-b bg-muted/20 px-8 py-6 flex flex-row justify-between items-center">
+            <div>
+              <CardTitle class="text-lg font-bold flex items-center gap-2">
+                <ShoppingCart class="w-5 h-5 text-primary" /> Pedido #{{ pedido.id_pedido }}
+              </CardTitle>
+              <CardDescription class="text-xs font-medium mt-1">Detalhes e status do pedido</CardDescription>
+            </div>
+
+            <!-- Status Update Section -->
+            <div class="flex items-center gap-3">
+                <Select v-model="newStatus" :disabled="availableStatuses.length === 0" class="w-[150px]">
+                  <SelectTrigger class="h-10 rounded-lg border-dashed border-primary/30">
+                    <SelectValue :placeholder="getStatusLabel(pedido.status)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="status in availableStatuses" :key="status.value" :value="status.value">{{ status.label }}</SelectItem>
+                  </SelectContent>
+                </Select>
+              <Button @click="updateOrderStatus" :disabled="isUpdatingStatus || pedido.status === newStatus" variant="outline" class="h-10 rounded-lg">
+                <template v-if="isUpdatingStatus">
+                  <Loader2 class="w-4 h-4 animate-spin" /> Salvando
+                </template>
+                <template v-else>
+                  <Save class="w-4 h-4 mr-2" /> Salvar Status
+                </template>
+              </Button>
+            </div>
+
+            <!-- Print Options -->
+            <div v-if="canPrintPedido" class="flex items-center gap-2">
+              <Select v-model="printOption">
+                <SelectTrigger class="w-[180px] h-10 rounded-lg">
+                  <SelectValue placeholder="Imprimir..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem v-for="status in availableStatuses" :key="status.value" :value="status.value">{{ status.label }}</SelectItem>
+                  <SelectItem value="Imprimir Completo" :disabled="!pedido || pedido.itens.length === 0">
+                    <Printer class="w-4 h-4 mr-2" /> Imprimir Completo
+                  </SelectItem>
+                  <SelectItem value="Imprimir Resumido">
+                    <Printer class="w-4 h-4 mr-2" /> Imprimir Resumido
+                  </SelectItem>
                 </SelectContent>
               </Select>
-            <Button @click="updateOrderStatus" :disabled="isUpdatingStatus || pedido.status === newStatus" variant="outline" class="h-10 rounded-lg">
-              <template v-if="isUpdatingStatus">
-                <Loader2 class="w-4 h-4 animate-spin" /> Salvando
-              </template>
-              <template v-else>
-                <Save class="w-4 h-4 mr-2" /> Salvar Status
-              </template>
-            </Button>
-          </div>
-
-          <!-- Print Options -->
-          <div class="flex items-center gap-2">
-            <Select v-model="printOption">
-              <SelectTrigger class="w-[180px] h-10 rounded-lg">
-                <SelectValue placeholder="Imprimir..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Imprimir Completo" :disabled="!pedido || pedido.itens.length === 0">
-                  <Printer class="w-4 h-4 mr-2" /> Imprimir Completo
-                </SelectItem>
-                <SelectItem value="Imprimir Resumido">
-                  <Printer class="w-4 h-4 mr-2" /> Imprimir Resumido
-                </SelectItem>
-              </SelectContent>
-            </Select>
-
-            <!-- PDF Preview Button -->
-            <Button
-              @click="showPdfPreview()"
-              :disabled="isGeneratingPdf || !pedido"
-              variant="outline"
-              class="h-10 rounded-lg border-blue-200 hover:border-blue-300 hover:bg-blue-50"
-            >
-              <template v-if="isGeneratingPdf">
-                <Loader2 class="w-4 h-4 animate-spin mr-2" />
-                Gerando...
-              </template>
-              <template v-else>
-                <FileText class="w-4 h-4 mr-2" />
-                Prévia
-              </template>
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent class="p-6 space-y-4">
-          <div v-if="autoPrintWarning" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-            <p class="text-xs font-medium text-amber-700">{{ autoPrintWarning }}</p>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <p class="text-xs font-semibold text-muted-foreground">Status</p>
-              <Badge 
-                variant="outline" 
-                :class="['rounded-lg px-3 py-0.5 text-[10px] font-bold tracking-wide uppercase border', getStatusClass(pedido.status)]"
-              >
-                {{ getStatusLabel(pedido.status) }}
-              </Badge>
             </div>
-            <div>
-              <p class="text-xs font-semibold text-muted-foreground">Data do Pedido</p>
-              <p class="font-bold text-sm">{{ pedido.data_pedido }}</p>
+          </CardHeader>
+          <CardContent class="p-6 space-y-4">
+            <div v-if="autoPrintWarning" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <p class="text-xs font-medium text-amber-700">{{ autoPrintWarning }}</p>
             </div>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <p class="text-xs font-semibold text-muted-foreground">Valor Total</p>
-              <p class="font-bold text-lg text-primary">{{ formatCurrency(pedido.total_pedido) }}</p>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground">Status</p>
+                <Badge
+                  variant="outline"
+                  :class="['rounded-lg px-3 py-0.5 text-[10px] font-bold tracking-wide uppercase border', getStatusClass(pedido.status)]"
+                >
+                  {{ getStatusLabel(pedido.status) }}
+                </Badge>
+              </div>
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground">Data do Pedido</p>
+                <p class="font-bold text-sm">{{ pedido.data_pedido }}</p>
+              </div>
             </div>
-            <div>
-              <p class="text-xs font-semibold text-muted-foreground">Forma de Pagamento</p>
-              <p class="font-bold text-sm">{{ pedido.forma_pag }}</p>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground">Valor Total</p>
+                <p class="font-bold text-lg text-primary">{{ formatCurrency(pedido.total_pedido) }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground">Forma de Pagamento</p>
+                <p class="font-bold text-sm">{{ pedido.forma_pag }}</p>
+              </div>
             </div>
-          </div>
-          <div v-if="pedido.ped_desconto > 0">
-            <p class="text-xs font-semibold text-muted-foreground">Desconto</p>
-            <p class="font-bold text-sm">{{ formatCurrency(pedido.ped_desconto) }}</p>
-          </div>
-          <div v-if="pedido.obs_pedido">
-            <p class="text-xs font-semibold text-muted-foreground">Observações do Pedido</p>
-            <p class="text-sm">{{ pedido.obs_pedido }}</p>
-          </div>
-          <div v-if="pedido.obs_entrega">
-            <p class="text-xs font-semibold text-muted-foreground">Observações de Entrega</p>
-            <p class="text-sm">{{ pedido.obs_entrega }}</p>
-          </div>
-          <div v-if="pedido.obs_cancelamento && pedido.status === 3">
-            <p class="text-xs font-semibold text-muted-foreground">Motivo Cancelamento</p>
-            <p class="text-sm text-destructive">{{ pedido.obs_cancelamento }}</p>
+            <div v-if="pedido.ped_desconto > 0">
+              <p class="text-xs font-semibold text-muted-foreground">Desconto</p>
+              <p class="font-bold text-sm">{{ formatCurrency(pedido.ped_desconto) }}</p>
+            </div>
+            <div v-if="pedido.obs_pedido">
+              <p class="text-xs font-semibold text-muted-foreground">Observações do Pedido</p>
+              <p class="text-sm">{{ pedido.obs_pedido }}</p>
+            </div>
+            <div v-if="pedido.obs_entrega">
+              <p class="text-xs font-semibold text-muted-foreground">Observações de Entrega</p>
+              <p class="text-sm">{{ pedido.obs_entrega }}</p>
+            </div>
+            <div v-if="pedido.obs_cancelamento && pedido.status === 3">
+              <p class="text-xs font-semibold text-muted-foreground">Motivo Cancelamento</p>
+              <p class="text-sm text-destructive">{{ pedido.obs_cancelamento }}</p>
           </div>
         </CardContent>
       </Card>
+      </TabsContent>
+      <TabsContent value="cliente" class="outline-none data-[state=inactive]:hidden">
+        <Card class="rounded-2xl border shadow-sm bg-card overflow-hidden">
+          <CardHeader class="border-b bg-muted/20 px-8 py-6">
+            <div>
+              <CardTitle class="text-lg font-bold flex items-center gap-2">
+                <User class="w-5 h-5 text-primary" /> Dados do Cliente
+              </CardTitle>
+              <CardDescription class="text-xs font-medium mt-1">Informações do cliente associado ao pedido</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent class="p-6 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground">Responsável</p>
+                <p class="font-bold text-sm">{{ cliente?.responsavel || '-' }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground">CPF/CNPJ</p>
+                <p class="font-bold text-sm">{{ cliente?.cpf_cnpj || '-' }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground">Email</p>
+                <p class="font-bold text-sm">{{ cliente?.email || '-' }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground">Contato</p>
+                <p class="font-bold text-sm">{{ cliente?.contato_1 || '-' }} <span v-if="cliente?.contato_2">/ {{ cliente?.contato_2 }}</span></p>
+              </div>
+              <div class="md:col-span-2">
+                <p class="text-xs font-semibold text-muted-foreground">Endereço</p>
+                <p class="font-bold text-sm">{{ cliente?.endereco || '-' }}<span v-if="cliente?.bairro">, {{ cliente?.bairro }}</span></p>
+                <p class="font-bold text-sm">
+                  {{ cliente?.cidade || '-' }}
+                  <span v-if="cliente?.estado"> - {{ cliente?.estado }}</span>
+                  <span v-if="cliente?.cep">, {{ cliente?.cep }}</span>
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
 
-      <!-- Cliente Info Card -->
+      <TabsContent value="itens" class="outline-none data-[state=inactive]:hidden">
+        <!-- Itens do Pedido Card -->
       <Card class="rounded-2xl border shadow-sm bg-card overflow-hidden">
         <CardHeader class="border-b bg-muted/20 px-8 py-6">
-          <CardTitle class="text-lg font-bold flex items-center gap-2">
-            <User class="w-5 h-5 text-primary" /> Cliente
-          </CardTitle>
-          <CardDescription class="text-xs font-medium mt-1">Dados do cliente associado</CardDescription>
-        </CardHeader>
-        <CardContent class="p-6 space-y-4">
-          <div>
-            <p class="text-xs font-semibold text-muted-foreground">Nome Fantasia</p>
-            <p class="font-bold text-sm">{{ cliente?.nome_fantasia || cliente?.razao_social || pedido.razao_social || '-' }}</p>
-          </div>
-          <div>
-            <p class="text-xs font-semibold text-muted-foreground">Responsável</p>
-            <p class="font-bold text-sm">{{ cliente?.responsavel || '-' }}</p>
-          </div>
-          <div>
-            <p class="text-xs font-semibold text-muted-foreground">CPF/CNPJ</p>
-            <p class="font-bold text-sm">{{ cliente?.cpf_cnpj || '-' }}</p>
-          </div>
-          <div>
-            <p class="text-xs font-semibold text-muted-foreground">Email</p>
-            <p class="font-bold text-sm">{{ cliente?.email || '-' }}</p>
-          </div>
-          <div>
-            <p class="text-xs font-semibold text-muted-foreground">Contato</p>
-            <p class="font-bold text-sm">{{ cliente?.contato_1 || '-' }} <span v-if="cliente?.contato_2">/ {{ cliente?.contato_2 }}</span></p>
-          </div>
-          <div>
-            <p class="text-xs font-semibold text-muted-foreground">Endereço</p>
-            <p class="font-bold text-sm">{{ cliente?.endereco || '-' }}<span v-if="cliente?.bairro">, {{ cliente?.bairro }}</span></p>
-            <p class="font-bold text-sm">{{ cliente?.cidade || '-' }}<span v-if="cliente?.estado"> - {{ cliente?.estado }}</span><span v-if="cliente?.cep">, {{ cliente?.cep }}</span></p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <!-- Itens do Pedido Card -->
-      <Card class="lg:col-span-3 rounded-2xl border shadow-sm bg-card overflow-hidden">
-        <CardHeader class="border-b bg-muted/20 px-8 py-6">
-          <div class="flex items-center justify-between gap-4">
-            <CardTitle class="text-lg font-bold flex items-center gap-2">
-            <Package class="w-5 h-5 text-primary" /> Itens do Pedido
-            </CardTitle>
-            <Button variant="outline" class="h-10 rounded-lg gap-2" @click="openAddItem">
-              <Plus class="w-4 h-4" /> Novo Item
-            </Button>
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="flex items-center justify-between gap-4">
+              <CardTitle class="text-lg font-bold flex items-center gap-2">
+              <Package class="w-5 h-5 text-primary" /> Itens do Pedido
+              </CardTitle>
+              <div class="flex gap-2">
+                <Button v-if="selectedItems.size > 0" variant="destructive" class="h-10 rounded-lg gap-2" @click="bulkDelete">
+                  <Trash2 class="w-4 h-4" /> Excluir Selecionados ({{ selectedItems.size }})
+                </Button>
+                <Button variant="outline" class="h-10 rounded-lg gap-2" @click="openAddItem">
+                  <Plus class="w-4 h-4" /> Novo Item
+                </Button>
+              </div>
+            </div>
+            <Input v-model="itemSearch" placeholder="Buscar itens..." class="w-full max-w-sm" />
           </div>
           <CardDescription class="text-xs font-medium mt-1">Adicionar, editar e remover itens do pedido</CardDescription>
         </CardHeader>
@@ -1178,53 +1273,59 @@ watch(printOption, (newVal) => {
         </CardContent>
 
         <CardContent class="p-6">
-          <div v-if="pedido.itens.length === 0" class="text-center py-10 text-muted-foreground">
-            Nenhum item neste pedido.
-          </div>
-          <div v-else class="space-y-4">
-            <Card v-for="item in pedido.itens" :key="item.id_item_pedido" class="border rounded-lg shadow-sm">
-              <CardContent class="p-4">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div class="flex-1 space-y-2">
-                    <div class="flex items-center gap-2">
-                      <span class="text-sm font-bold text-muted-foreground">#{{ item.id_item_pedido }}</span>
-                      <Badge variant="outline" class="text-xs">{{ item.referencia }}</Badge>
-                    </div>
-                    <p class="font-bold text-base">{{ item.produto }}</p>
-                    <div class="flex items-center gap-4 text-sm">
-                      <span class="text-muted-foreground">Quantidade:</span>
-                      <span class="font-semibold">{{ getItemQtdTotal(item) }}</span>
-                    </div>
-                    <div class="flex items-center gap-4 text-sm">
-                      <span class="text-muted-foreground">Total:</span>
-                      <span class="font-bold text-primary">{{ formatCurrency(item.total_item) }}</span>
-                    </div>
-                    <div v-if="getSizeBadges(mapItemToQuantidades(item)).length > 0" class="flex flex-wrap gap-1 mt-2">
-                      <Badge
-                        v-for="b in getSizeBadges(mapItemToQuantidades(item))"
-                        :key="`${item.id_item_pedido}-${b.key}`"
-                        variant="outline"
-                        class="h-5 px-2 rounded-md text-[10px] font-bold"
-                      >
-                        {{ b.label }}:{{ b.value }}
-                      </Badge>
+          <div>
+            <div v-if="filteredItens.length === 0" class="text-center py-10 text-muted-foreground">
+              {{ pedido.itens.length === 0 ? 'Nenhum item neste pedido.' : 'Nenhum item encontrado para a busca.' }}
+            </div>
+            <div v-else class="space-y-4">
+              <Card v-for="item in filteredItens" :key="item.id_item_pedido" class="border rounded-lg shadow-sm">
+                <CardContent class="p-4">
+                  <div class="flex items-start gap-3">
+                    <input type="checkbox" :checked="selectedItems.has(item.id_item_pedido)" @change="toggleSelection(item.id_item_pedido)" class="mt-1" />
+                    <div class="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div class="flex-1 space-y-2">
+                        <div class="flex items-center gap-2">
+                          <span class="text-sm font-bold text-muted-foreground">#{{ item.id_item_pedido }}</span>
+                          <Badge variant="outline" class="text-xs">{{ item.referencia }}</Badge>
+                        </div>
+                        <p class="font-bold text-base">{{ item.produto }}</p>
+                        <div class="flex items-center gap-4 text-sm">
+                          <span class="text-muted-foreground">Quantidade:</span>
+                          <span class="font-semibold">{{ getItemQtdTotal(item) }}</span>
+                        </div>
+                        <div class="flex items-center gap-4 text-sm">
+                          <span class="text-muted-foreground">Total:</span>
+                          <span class="font-bold text-primary">{{ formatCurrency(item.total_item) }}</span>
+                        </div>
+                        <div v-if="getSizeBadges(mapItemToQuantidades(item)).length > 0" class="flex flex-wrap gap-1 mt-2">
+                          <Badge
+                            v-for="b in getSizeBadges(mapItemToQuantidades(item))"
+                            :key="`${item.id_item_pedido}-${b.key}`"
+                            variant="outline"
+                            class="h-5 px-2 rounded-md text-[10px] font-bold"
+                          >
+                            {{ b.label }}:{{ b.value }}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div class="flex gap-2">
+                        <Button variant="ghost" size="icon" class="h-9 w-9 rounded-lg hover:bg-accent" :disabled="isSavingItem" @click="openEditItem(item)">
+                          <Pencil class="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" class="h-9 w-9 rounded-lg text-destructive hover:text-destructive" :disabled="isSavingItem" @click="removeItem(item.id_item_pedido)">
+                          <Trash2 class="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                  <div class="flex gap-2">
-                    <Button variant="ghost" size="icon" class="h-9 w-9 rounded-lg hover:bg-accent" :disabled="isSavingItem" @click="openEditItem(item)">
-                      <Pencil class="w-4 h-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" class="h-9 w-9 rounded-lg text-destructive hover:text-destructive" :disabled="isSavingItem" @click="removeItem(item.id_item_pedido)">
-                      <Trash2 class="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </CardContent>
       </Card>
-    </div>
+      </TabsContent>
+    </Tabs>
 
     <!-- PDF Preview Modal -->
     <div v-if="showPdfModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
@@ -1432,5 +1533,34 @@ watch(printOption, (newVal) => {
         </div>
       </div>
     </div>
+
+    <Dialog :open="showCancelCompletedDialog" @update:open="(open) => !open && closeCancelCompletedDialog()">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Cancelar pedido concluído?</DialogTitle>
+          <DialogDescription>
+            Este pedido já foi concluído. Ao cancelar, o pedido será invalidado e essa alteração ficará registrada. Deseja continuar?
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" @click="closeCancelCompletedDialog">
+            Voltar
+          </Button>
+          <Button
+            class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            :disabled="isUpdatingStatus"
+            @click="confirmCancelCompletedPedido"
+          >
+            <template v-if="isUpdatingStatus">
+              <Loader2 class="w-4 h-4 animate-spin mr-2" />
+              Cancelando...
+            </template>
+            <template v-else>
+              Confirmar cancelamento
+            </template>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
