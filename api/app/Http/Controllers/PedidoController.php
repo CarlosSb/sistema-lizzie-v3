@@ -229,11 +229,18 @@ class PedidoController extends Controller
             ], 422);
         }
 
-        $pedido = $this->pedidoService->atualizarStatus(
-            $id, 
-            $status, 
-            $data['obs_cancelamento'] ?? null
-        );
+        try {
+            $pedido = $this->pedidoService->atualizarStatus(
+                $id,
+                $status,
+                $data['obs_cancelamento'] ?? null
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 422);
+        }
 
         return response()->json([
             'success' => true,

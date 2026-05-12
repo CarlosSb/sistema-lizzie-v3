@@ -8,6 +8,11 @@ class PedidoService
 {
     private const TAMANHOS_INFANTIS = ['pp', 'p', 'm', 'g', 'u', 'rn'];
     private const TAMANHOS_FEMININO = ['ida_1', 'ida_2', 'ida_3', 'ida_4', 'ida_6', 'ida_8', 'ida_10', 'ida_12'];
+    private const FLUXO_STATUS = [
+        1 => [2, 3],
+        2 => [1, 4, 3],
+        4 => [3],
+    ];
 
     private function findOrFail($model, $id)
     {
@@ -225,7 +230,17 @@ class PedidoService
             throw new \Exception('Pedido não encontrado');
         }
         
-        $statusAnterior = $pedido->status;
+        $statusAnterior = (int) $pedido->status;
+        $status = (int) $status;
+
+        if ($statusAnterior === $status) {
+            return $pedido;
+        }
+
+        if (!in_array($status, self::FLUXO_STATUS[$statusAnterior] ?? [], true)) {
+            throw new \InvalidArgumentException('Transição de status inválida para o fluxo do pedido');
+        }
+
         $updateData = ['status' => $status];
         
         if ($status === 3 && $obsCancelamento) {
@@ -236,7 +251,7 @@ class PedidoService
 
         if ($status === 4 && $statusAnterior !== 4) {
             $this->baixaEstoque($pedidoId);
-        } elseif ($status === 3 && ($statusAnterior === 4 || $statusAnterior === 2)) {
+        } elseif ($statusAnterior === 4 && $status !== 4) {
             $this->retornoEstoque($pedidoId);
         }
 
@@ -383,7 +398,6 @@ class PedidoService
             $total += $quantidades[$tamanho] ?? 0;
         }
         
-        $total += $quantidades['pp'] ?? 0;
         $total += $quantidades['lisa'] ?? 0;
         
         return $total;
