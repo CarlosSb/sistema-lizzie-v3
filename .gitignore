@@ -53,5 +53,9 @@ storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
 storage/logs/*
+api/storage/app/browser-pdf-temp/
+api/storage/app/documents/*
+api/storage/cache/*
+api/storage/logs/*
 bootstrap/cache/*
 .phpunit.result.cache
