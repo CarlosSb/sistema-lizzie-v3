@@ -600,7 +600,7 @@ const updateOrderStatus = async () => {
     if (shouldAutoPrint) {
       const printed = await autoPrintCompletedOrder()
       if (!printed) {
-        autoPrintWarning.value = 'Pedido concluído. O navegador bloqueou ou falhou na impressão automática. Use "Ver PDF" para imprimir.'
+        autoPrintWarning.value = 'Pedido concluído. O navegador bloqueou ou falhou na impressão automática. Use "Prévia" para imprimir.'
       }
     }
   } catch (error: any) {
@@ -663,51 +663,6 @@ const loadPreviewModel = async (mode: 'complete' | 'summary') => {
   }
 }
 
-const generatePedidoPdf = async (mode: unknown = 'complete') => {
-  if (!pedido.value || isGeneratingPdf.value) return false
-
-  const normalizedMode = normalizeTemplateMode(mode)
-  currentPrintMode.value = normalizedMode
-  setPdfState('generating')
-
-  try {
-    const generateResponse = await apiClient.post(`/api/documents/pedido/${pedido.value.id_pedido}/generate`, {
-      template: normalizedMode,
-      format: 'pdf',
-      paper_size: 'a4',
-      orientation: 'portrait',
-      include_qr: false,
-    })
-
-    const metadata = generateResponse.data?.data as GeneratedDocumentMetadata | undefined
-    const contentUrl = metadata?.content_url
-    if (!contentUrl) {
-      throw new Error('URL de conteúdo do documento não retornada pela API.')
-    }
-    documentMetadata.value = metadata || null
-
-    const contentResponse = await apiClient.get(contentUrl, {
-      responseType: 'blob'
-    })
-
-    const blob = new Blob([contentResponse.data], { type: 'application/pdf' })
-    if (blob.size === 0) {
-      throw new Error('PDF gerado está vazio')
-    }
-
-    revokePdfBlobUrl()
-    pdfBlob.value = blob
-    pdfBlobUrl.value = URL.createObjectURL(blob)
-    setPdfState('ready')
-    return true
-  } catch (error: any) {
-    const message = 'Erro ao gerar PDF: ' + (error.response?.data?.message || error.message)
-    setPdfState('error', message)
-    console.error('Erro ao gerar PDF:', error)
-    return false
-  }
-}
-
 const showPdfPreview = async (mode: unknown = 'complete') => {
   if (!pedido.value) return
   const normalizedMode = normalizeTemplateMode(mode)
@@ -760,11 +715,56 @@ const printPedido = (mode: 'complete' | 'summary') => {
   showPdfPreview(mode)
 }
 
-const regeneratePdf = async () => {
+const reloadPrintPreview = async () => {
   await loadPreviewModel(currentPrintMode.value)
   const generated = await generatePedidoPdf(currentPrintMode.value)
   if (generated) {
     showDocumentFeedback('success', 'Documento regerado com sucesso.')
+  }
+}
+
+const generatePedidoPdf = async (mode: unknown = 'complete') => {
+  if (!pedido.value || isGeneratingPdf.value) return false
+
+  const normalizedMode = normalizeTemplateMode(mode)
+  currentPrintMode.value = normalizedMode
+  setPdfState('generating')
+
+  try {
+    const generateResponse = await apiClient.post(`/api/documents/pedido/${pedido.value.id_pedido}/generate`, {
+      template: normalizedMode,
+      format: 'pdf',
+      paper_size: 'a4',
+      orientation: 'portrait',
+      include_qr: false,
+    })
+
+    const metadata = generateResponse.data?.data as GeneratedDocumentMetadata | undefined
+    const contentUrl = metadata?.content_url
+    if (!contentUrl) {
+      throw new Error('URL de conteúdo do documento não retornada pela API.')
+    }
+    documentMetadata.value = metadata || null
+
+    const contentResponse = await apiClient.get(contentUrl, {
+      responseType: 'blob'
+    })
+
+    const blob = new Blob([contentResponse.data], { type: 'application/pdf' })
+    if (blob.size === 0) {
+      throw new Error('PDF gerado está vazio')
+    }
+
+    revokePdfBlobUrl()
+    pdfBlob.value = blob
+    pdfBlobUrl.value = URL.createObjectURL(blob)
+    setPdfState('ready')
+    return true
+  } catch (error: any) {
+    const message = 'Erro ao gerar PDF: ' + (error.response?.data?.message || error.message)
+    setPdfState('error', message)
+    console.error('Erro ao gerar PDF:', error)
+    return false
   }
 }
 
@@ -1280,31 +1280,31 @@ watch(printOption, (newVal) => {
           </div>
           <div v-if="isLoadingPreviewModel" class="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 flex items-center gap-2 shrink-0">
             <Loader2 class="w-4 h-4 animate-spin" />
-            <span>Sincronizando prévia com o template do backend...</span>
+            <span>Carregando informações do pedido no backend...</span>
           </div>
 
           <div class="flex-1 min-h-0 overflow-auto">
-            <div class="mx-auto w-full max-w-[794px] bg-white text-slate-950 shadow-sm border rounded-md p-6 text-[10px] leading-[1.35]">
-              <div class="border-b-2 border-slate-800 pb-[14px] mb-[18px] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div class="flex items-center gap-4">
-                  <div class="w-[54px] h-[54px] border border-slate-300 bg-slate-100 flex items-center justify-center text-[8px] text-slate-500">
+            <div class="lizzie-print-page mx-auto w-full max-w-[794px] bg-white text-slate-950 shadow-sm border-y border-x-0 rounded-none px-6 py-4 text-[10px] leading-[1.25]">
+              <div class="border-b border-slate-800 pb-[9px] mb-[10px] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-[44px] h-[44px] border border-slate-300 bg-slate-100 flex items-center justify-center text-[7px] text-slate-500">
                     LOGO
                   </div>
                   <div>
-                    <h3 class="text-[22px] font-bold leading-none text-slate-900">Sistema Lizzie</h3>
-                    <p class="text-[10px] text-slate-500 mt-1">Sistema de Gestão Empresarial</p>
+                    <h3 class="text-[18px] font-bold leading-none text-slate-900">Sistema Lizzie</h3>
+                    <p class="text-[9px] text-slate-500 mt-1">Sistema de Gestão Empresarial</p>
                   </div>
                 </div>
                 <div class="sm:text-right">
-                  <p class="text-[16px] font-bold text-slate-900">Pedido #{{ previewModel.orderNumber }}</p>
-                  <p class="text-[10px] text-slate-500">Data: {{ previewModel.orderDate }}</p>
-                  <p class="text-[10px] text-slate-500">Status: {{ previewModel.orderStatus }}</p>
+                  <p class="text-[14px] font-bold text-slate-900">Pedido #{{ previewModel.orderNumber }}</p>
+                  <p class="text-[9px] text-slate-500">Data: {{ previewModel.orderDate }}</p>
+                  <p class="text-[9px] text-slate-500">Status: {{ previewModel.orderStatus }}</p>
                 </div>
               </div>
 
-              <section v-if="previewModel.showClientSection" class="mb-[18px]">
-                <h4 class="text-[12px] font-bold border-b border-slate-300 pb-[5px] mb-2">Dados do Cliente</h4>
-                <div class="rounded-md border border-slate-200 bg-slate-50 p-[10px] grid grid-cols-1 md:grid-cols-2 gap-2">
+              <section v-if="previewModel.showClientSection" class="mb-[10px]">
+                <h4 class="text-[10px] font-bold border-b border-slate-300 pb-[3px] mb-[5px]">Dados do Cliente</h4>
+                <div class="bg-slate-50 p-[7px] grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
                   <p><span class="font-semibold">Nome/Razão Social:</span> {{ previewModel.customer.name }}</p>
                   <p><span class="font-semibold">Responsável:</span> {{ previewModel.customer.responsible }}</p>
                   <p><span class="font-semibold">CPF/CNPJ:</span> {{ previewModel.customer.document }}</p>
@@ -1315,42 +1315,42 @@ watch(printOption, (newVal) => {
                 </div>
               </section>
 
-              <section class="mb-[18px]">
-                <h4 class="text-[12px] font-bold border-b border-slate-300 pb-[5px] mb-2">Itens do Pedido</h4>
-                <div class="overflow-x-auto rounded-md border border-slate-200">
+              <section class="mb-[10px]">
+                <h4 class="text-[10px] font-bold border-b border-slate-300 pb-[3px] mb-[5px]">Itens do Pedido</h4>
+                <div class="overflow-x-auto">
                   <table class="w-full border-collapse">
                     <thead class="bg-slate-100 text-slate-900">
                       <tr>
-                        <th class="px-[6px] py-[7px] text-left font-semibold">Produto</th>
-                        <th class="px-[6px] py-[7px] text-center font-semibold">Qtd.</th>
-                        <th class="px-[6px] py-[7px] text-center font-semibold">Tamanhos</th>
-                        <th class="px-[6px] py-[7px] text-right font-semibold">Unitário</th>
-                        <th class="px-[6px] py-[7px] text-right font-semibold">Total</th>
+                        <th class="px-[5px] py-[5px] text-left font-semibold">Produto</th>
+                        <th class="px-[5px] py-[5px] text-center font-semibold">Qtd.</th>
+                        <th class="px-[5px] py-[5px] text-center font-semibold">Tamanhos</th>
+                        <th class="px-[5px] py-[5px] text-right font-semibold">Unitário</th>
+                        <th class="px-[5px] py-[5px] text-right font-semibold">Total</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr v-for="item in previewModel.items" :key="item.id" class="border-t border-slate-200">
-                        <td class="px-[6px] py-[7px] min-w-[220px]">
+                        <td class="px-[5px] py-[5px] min-w-[220px]">
                           <p class="font-medium">{{ item.name }}</p>
                           <p class="text-[8px] text-slate-500">{{ item.reference }}</p>
                         </td>
-                        <td class="px-[6px] py-[7px] text-center">{{ item.quantity }}</td>
-                        <td class="px-[6px] py-[7px] text-center">{{ item.sizes }}</td>
-                        <td class="px-[6px] py-[7px] text-right">{{ item.unitPrice }}</td>
-                        <td class="px-[6px] py-[7px] text-right font-semibold">{{ item.total }}</td>
+                        <td class="px-[5px] py-[5px] text-center">{{ item.quantity }}</td>
+                        <td class="px-[5px] py-[5px] text-center">{{ item.sizes }}</td>
+                        <td class="px-[5px] py-[5px] text-right">{{ item.unitPrice }}</td>
+                        <td class="px-[5px] py-[5px] text-right font-semibold">{{ item.total }}</td>
                       </tr>
                       <tr class="border-t border-slate-300 bg-slate-100 font-bold">
-                        <td colspan="4" class="px-[6px] py-[7px] text-right text-[11px]">Total do Pedido:</td>
-                        <td class="px-[6px] py-[7px] text-right text-[11px]">{{ previewModel.payment.total }}</td>
+                        <td colspan="4" class="px-[5px] py-[5px] text-right text-[10px]">Total do Pedido:</td>
+                        <td class="px-[5px] py-[5px] text-right text-[10px]">{{ previewModel.payment.total }}</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
               </section>
 
-              <section class="mb-[18px]">
-                <h4 class="text-[12px] font-bold border-b border-slate-300 pb-[5px] mb-2">Resumo e Pagamento</h4>
-                <div class="rounded-md border border-slate-200 bg-slate-50 p-[10px] grid grid-cols-1 md:grid-cols-2 gap-2">
+              <section class="mb-[10px]">
+                <h4 class="text-[10px] font-bold border-b border-slate-300 pb-[3px] mb-[5px]">Resumo e Pagamento</h4>
+                <div class="bg-slate-50 p-[7px] grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
                   <p><span class="font-semibold">Status:</span> {{ previewModel.orderStatus }}</p>
                   <p><span class="font-semibold">Forma de Pagamento:</span> {{ previewModel.payment.method }}</p>
                   <p v-if="previewModel.payment.discount > 0"><span class="font-semibold">Desconto:</span> {{ formatCurrency(previewModel.payment.discount) }}</p>
@@ -1358,37 +1358,37 @@ watch(printOption, (newVal) => {
                 </div>
               </section>
 
-              <section v-if="previewModel.showAdditionalInfo" class="mb-[18px]">
-                <h4 class="text-[12px] font-bold border-b border-slate-300 pb-[5px] mb-2">Informações Adicionais</h4>
+              <section v-if="previewModel.showAdditionalInfo" class="mb-[10px]">
+                <h4 class="text-[10px] font-bold border-b border-slate-300 pb-[3px] mb-[5px]">Informações Adicionais</h4>
                 <div class="space-y-2">
-                  <div v-if="hasContent(previewModel.notes.pedido)" class="rounded-md border border-slate-200 bg-slate-50 p-[9px]">
+                  <div v-if="hasContent(previewModel.notes.pedido)" class="bg-slate-50 p-[7px]">
                     <p class="font-semibold mb-1">Observações do Pedido</p>
                     <p>{{ previewModel.notes.pedido }}</p>
                   </div>
-                  <div v-if="hasContent(previewModel.notes.entrega)" class="rounded-md border border-slate-200 bg-slate-50 p-[9px]">
+                  <div v-if="hasContent(previewModel.notes.entrega)" class="bg-slate-50 p-[7px]">
                     <p class="font-semibold mb-1">Observações de Entrega</p>
                     <p>{{ previewModel.notes.entrega }}</p>
                   </div>
                 </div>
               </section>
 
-              <section class="mb-[18px]">
-                <h4 class="text-[12px] font-bold border-b border-slate-300 pb-[5px] mb-2">Assinaturas</h4>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-10 text-center">
-                  <div class="pt-[38px]">
-                    <div class="border-b border-slate-500 h-[34px] mb-1.5"></div>
+              <section class="mb-[10px] break-avoid">
+                <h4 class="text-[10px] font-bold border-b border-slate-300 pb-[3px] mb-[5px]">Assinaturas</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-8 text-center">
+                  <div class="pt-[24px]">
+                    <div class="border-b border-slate-500 h-[24px] mb-1.5"></div>
                     <p class="font-medium">Cliente</p>
                     <p class="text-[8px] text-slate-500">{{ previewModel.signatureName }}</p>
                   </div>
-                  <div class="pt-[38px]">
-                    <div class="border-b border-slate-500 h-[34px] mb-1.5"></div>
+                  <div class="pt-[24px]">
+                    <div class="border-b border-slate-500 h-[24px] mb-1.5"></div>
                     <p class="font-medium">Sistema Lizzie</p>
                     <p class="text-[8px] text-slate-500">Representante Autorizado</p>
                   </div>
                 </div>
               </section>
 
-              <section class="text-center text-[8px] text-slate-500 border-t-2 border-slate-200 pt-[10px] mt-[28px]">
+              <section class="text-center text-[8px] text-slate-500 border-t border-slate-200 pt-[7px] mt-[12px]">
                 <p class="font-semibold">Documento gerado em {{ previewModel.generatedAtFormatted }}</p>
                 <p>{{ previewModel.footerText }}</p>
               </section>
@@ -1415,7 +1415,7 @@ watch(printOption, (newVal) => {
             Baixar PDF
           </Button>
           <Button
-            @click="regeneratePdf"
+            @click="reloadPrintPreview"
             :disabled="pdfDocumentState === 'generating'"
             variant="outline"
           >

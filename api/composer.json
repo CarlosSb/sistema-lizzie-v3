@@ -11,6 +11,7 @@
         "firebase/php-jwt": "^6.0",
         "laravel/lumen-framework": "^9.0",
         "ramsey/uuid": "^4.7",
+        "spatie/browsershot": "^4.4",
         "tecnickcom/tcpdf": "^6.11"
     },
     "require-dev": {

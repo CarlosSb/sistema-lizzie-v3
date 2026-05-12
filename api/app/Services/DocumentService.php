@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Log;
 
 class DocumentService
 {
-    private const PEDIDO_LAYOUT_VERSION = 'pedido-template-v34';
+    private const PEDIDO_LAYOUT_VERSION = 'pedido-browser-template-v6';
 
     private PdfGenerator $pdfGenerator;
     private string $baseDir;

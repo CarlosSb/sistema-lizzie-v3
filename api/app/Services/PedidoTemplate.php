@@ -6,303 +6,370 @@ class PedidoTemplate extends BaseTemplate
 {
     public function render(PrintData $data, PrintOptions $options): string
     {
-        $html = $this->getStyles();
-        $html .= '<main class="page">';
-        $html .= $this->getHeader($data);
+        $isComplete = $this->isComplete($options);
 
-        if ($this->isComplete($options)) {
-            $html .= $this->getClientInfo($data);
-        }
-
-        $html .= $this->getItemsTable($data);
-        $html .= $this->getPaymentInfo($data);
-
-        if ($this->isComplete($options)) {
-            $html .= $this->getAdditionalInfo($data);
-        }
-
-        $html .= $this->getSignatures($data);
-        $html .= $this->getFooter($data);
-        $html .= '</main>';
-
-        return $html;
+        return '<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Pedido Sistema Lizzie</title>
+  ' . $this->getStyles() . '
+</head>
+<body>
+  <main class="page">
+    ' . $this->getHeader($data) . '
+    ' . ($isComplete ? $this->getClientInfo($data) : '') . '
+    ' . $this->getItemsTable($data) . '
+    ' . $this->getPaymentInfo($data) . '
+    ' . ($isComplete ? $this->getAdditionalInfo($data) : '') . '
+    ' . $this->getSignatures($data) . '
+    ' . $this->getFooter($data) . '
+  </main>
+</body>
+</html>';
     }
 
     private function getStyles(): string
     {
         return '
-            <style>
-                * {
-                    box-sizing: border-box;
-                    font-family: Arial, Helvetica, sans-serif;
-                }
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 10mm 10mm 12mm 10mm;
+    }
 
-                @page {
-                    size: A4;
-                    margin: 12mm;
-                }
+    * {
+      box-sizing: border-box;
+      font-family: Arial, Helvetica, sans-serif;
+    }
 
-                body {
-                    margin: 0;
-                    background: #eef2f7;
-                    color: #0f172a;
-                    font-size: 12px;
-                }
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: #ffffff;
+      color: #0f172a;
+    }
 
-                .page {
-                    width: 100%;
-                    background: #ffffff;
-                    padding: 24px;
-                    border: 1px solid #d4dce8;
-                    border-radius: 6px;
-                }
+    body {
+      padding: 0;
+    }
 
-                .header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: flex-start;
-                    border-bottom: 2px solid #1e3a5f;
-                    padding-bottom: 16px;
-                }
+    .page {
+      width: 100%;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 5mm 0;
+      border-radius: 0;
+      border: 0;
+      border-top: 1px solid #d4dce8;
+      border-bottom: 1px solid #d4dce8;
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
+    }
 
-                .brand {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 1px solid #0f172a;
+      padding-bottom: 9px;
+    }
 
-                .logo {
-                    width: 48px;
-                    height: 48px;
-                    border: 1px solid #cbd5e1;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    color: #94a3b8;
-                    font-size: 10px;
-                }
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
 
-                .brand h1 {
-                    margin: 0;
-                    font-size: 20px;
-                    color: #0f172a;
-                }
+    .logo {
+      width: 44px;
+      height: 44px;
+      border: 1px solid #cbd5e1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      color: #94a3b8;
+      background: #f8fafc;
+      flex: 0 0 auto;
+    }
 
-                .brand p,
-                .order-info p {
-                    margin: 3px 0;
-                    font-size: 10px;
-                    color: #64748b;
-                }
+    .brand h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.05;
+    }
 
-                .order-info {
-                    text-align: right;
-                }
+    .brand p,
+    .order-info p {
+      margin: 3px 0;
+      font-size: 9px;
+      color: #64748b;
+    }
 
-                .order-info h2 {
-                    margin: 0 0 6px;
-                    font-size: 15px;
-                }
+    .order-info {
+      text-align: right;
+    }
 
-                .section {
-                    margin-top: 18px;
-                }
+    .order-info h2 {
+      margin: 0 0 5px;
+      font-size: 14px;
+      line-height: 1.1;
+    }
 
-                .section-title {
-                    font-size: 12px;
-                    font-weight: bold;
-                    border-bottom: 1px solid #94a3b8;
-                    padding-bottom: 5px;
-                    margin-bottom: 8px;
-                }
+    .section {
+      margin-top: 10px;
+    }
 
-                .box {
-                    border: 1px solid #cbd5e1;
-                    border-radius: 6px;
-                    background: #f8fafc;
-                    padding: 10px;
-                }
+    .section-title {
+      font-weight: bold;
+      font-size: 10px;
+      margin-bottom: 5px;
+      border-bottom: 1px solid #94a3b8;
+      padding-bottom: 3px;
+    }
 
-                .grid-2 {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 7px 28px;
-                }
+    .box {
+      border: 0;
+      border-radius: 0;
+      padding: 7px;
+      background: #f8fafc;
+    }
 
-                table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    font-size: 10.5px;
-                }
+    .client-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 24px;
+      font-size: 10px;
+      line-height: 1.25;
+    }
 
-                th {
-                    background: #f1f5f9;
-                    padding: 7px;
-                    text-align: left;
-                    border-bottom: 1px solid #cbd5e1;
-                }
+    .client-grid .full {
+      grid-column: 1 / -1;
+    }
 
-                td {
-                    padding: 7px;
-                    border-bottom: 1px solid #cbd5e1;
-                }
+    strong {
+      color: #0f172a;
+      font-weight: 700;
+    }
 
-                th:nth-child(2),
-                td:nth-child(2),
-                th:nth-child(4),
-                td:nth-child(4),
-                th:nth-child(5),
-                td:nth-child(5) {
-                    text-align: right;
-                }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+    }
 
-                .total-row {
-                    margin-top: 10px;
-                    text-align: right;
-                    font-weight: bold;
-                }
+    th {
+      text-align: left;
+      background: #f1f5f9;
+      padding: 5px;
+      border-bottom: 1px solid #cbd5e1;
+      color: #0f172a;
+      font-weight: 700;
+    }
 
-                .note-box {
-                    min-height: 50px;
-                    margin-bottom: 10px;
-                }
+    td {
+      padding: 5px;
+      border-bottom: 1px solid #cbd5e1;
+      vertical-align: top;
+    }
 
-                .signatures {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 40px;
-                    margin-top: 55px;
-                }
+    th:nth-child(2),
+    td:nth-child(2),
+    th:nth-child(4),
+    td:nth-child(4),
+    th:nth-child(5),
+    td:nth-child(5) {
+      text-align: right;
+    }
 
-                .signature {
-                    border-top: 1px solid #0f172a;
-                    text-align: center;
-                    padding-top: 7px;
-                    font-size: 10px;
-                }
+    tr {
+      break-inside: avoid;
+    }
 
-                .signature span {
-                    display: block;
-                    color: #64748b;
-                    font-size: 9px;
-                    margin-top: 2px;
-                }
+    .product-name {
+      font-weight: 700;
+    }
 
-                .footer {
-                    border-top: 1px solid #cbd5e1;
-                    margin-top: 28px;
-                    padding-top: 8px;
-                    text-align: center;
-                    color: #94a3b8;
-                    font-size: 9px;
-                }
-            </style>
-        ';
+    .product-reference {
+      margin-top: 2px;
+      color: #64748b;
+      font-size: 8px;
+    }
+
+    .total-row {
+      text-align: right;
+      font-weight: bold;
+      padding-top: 7px;
+      font-size: 10px;
+    }
+
+    .payment {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      font-size: 10px;
+      gap: 24px;
+      line-height: 1.25;
+    }
+
+    .note-box {
+      min-height: 0;
+      font-size: 10px;
+      color: #334155;
+      line-height: 1.25;
+    }
+
+    .note-box + .note-box {
+      margin-top: 8px;
+    }
+
+    .signatures {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      margin-top: 24px;
+      break-inside: avoid;
+    }
+
+    .signature {
+      border-top: 1px solid #0f172a;
+      text-align: center;
+      padding-top: 6px;
+      font-size: 10px;
+    }
+
+    .signature span {
+      display: block;
+      color: #64748b;
+      font-size: 8px;
+      margin-top: 3px;
+    }
+
+    .footer {
+      border-top: 1px solid #cbd5e1;
+      margin-top: 12px;
+      padding-top: 7px;
+      text-align: center;
+      color: #94a3b8;
+      font-size: 8px;
+    }
+  </style>';
     }
 
     private function getHeader(PrintData $data): string
     {
         return '
-            <header class="header">
-                <div class="brand">
-                    <div class="logo">LOGO</div>
-                    <div>
-                        <h1>Sistema Lizzie</h1>
-                        <p>Sistema de Gestão Empresarial</p>
-                    </div>
-                </div>
+    <header class="header">
+      <div class="brand">
+        <div class="logo">LOGO</div>
+        <div>
+          <h1>Sistema Lizzie</h1>
+          <p>Sistema de Gestão Empresarial</p>
+        </div>
+      </div>
 
-                <div class="order-info">
-                    <h2>Pedido #' . $this->h($data->pedido->id_pedido ?? '') . '</h2>
-                    <p>Data: ' . $this->h($this->safeDate($data->pedido->data_pedido ?? null)) . '</p>
-                    <p>Status: ' . $this->h($this->getStatusText((int)($data->pedido->status ?? 0))) . '</p>
-                </div>
-            </header>
-        ';
+      <div class="order-info">
+        <h2>Pedido #' . $this->h($data->pedido->id_pedido ?? '') . '</h2>
+        <p>Data: ' . $this->h($this->safeDate($data->pedido->data_pedido ?? null)) . '</p>
+        <p>Status: ' . $this->h($this->getStatusText((int)($data->pedido->status ?? 0))) . '</p>
+      </div>
+    </header>';
     }
 
     private function getClientInfo(PrintData $data): string
     {
         return '
-            <section class="section">
-                <div class="section-title">Dados do Cliente</div>
-                <div class="box grid-2">
-                    <div><strong>Nome/Razão Social:</strong> ' . $this->h($this->clientName($data)) . '</div>
-                    <div><strong>Responsável:</strong> ' . $this->h($this->safeText($data->cliente->responsavel ?? '-')) . '</div>
-                    <div><strong>CPF/CNPJ:</strong> ' . $this->h($this->safeText($data->cliente->cpf_cnpj ?? '-')) . '</div>
-                    <div><strong>Email:</strong> ' . $this->h($this->safeText($data->cliente->email ?? '-')) . '</div>
-                    <div><strong>Contato:</strong> ' . $this->h($this->safeText($data->cliente->contato_1 ?? '-')) . '</div>
-                    <div><strong>Cidade/Estado:</strong> ' . $this->h($this->safeText($data->cliente->cidade ?? '-')) . ' / ' . $this->h($this->safeText($data->cliente->estado ?? '-')) . '</div>
-                    <div><strong>Endereço:</strong> ' . $this->h($this->safeText($data->cliente->endereco ?? '-')) . ', ' . $this->h($this->safeText($data->cliente->bairro ?? '-')) . ' - ' . $this->h($this->safeText($data->cliente->cep ?? '-')) . '</div>
-                </div>
-            </section>
-        ';
+    <section class="section">
+      <div class="section-title">Dados do Cliente</div>
+
+      <div class="box client-grid">
+        <div><strong>Nome/Razão Social:</strong> ' . $this->h($this->clientName($data)) . '</div>
+        <div><strong>Responsável:</strong> ' . $this->h($this->safeText($data->cliente->responsavel ?? '-')) . '</div>
+        <div><strong>CPF/CNPJ:</strong> ' . $this->h($this->safeText($data->cliente->cpf_cnpj ?? '-')) . '</div>
+        <div><strong>Email:</strong> ' . $this->h($this->safeText($data->cliente->email ?? '-')) . '</div>
+        <div><strong>Contato:</strong> ' . $this->h($this->safeText($data->cliente->contato_1 ?? '-')) . '</div>
+        <div><strong>Cidade/Estado:</strong> ' . $this->h($this->safeText($data->cliente->cidade ?? '-')) . ' / ' . $this->h($this->safeText($data->cliente->estado ?? '-')) . '</div>
+        <div class="full"><strong>Endereço:</strong> ' . $this->h($this->safeText($data->cliente->endereco ?? '-')) . ', ' . $this->h($this->safeText($data->cliente->bairro ?? '-')) . ' - ' . $this->h($this->safeText($data->cliente->cep ?? '-')) . '</div>
+      </div>
+    </section>';
     }
 
     private function getItemsTable(PrintData $data): string
     {
         $html = '
-            <section class="section">
-                <div class="section-title">Itens do Pedido</div>
+    <section class="section">
+      <div class="section-title">Itens do Pedido</div>
 
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Produto</th>
-                            <th>Qtd.</th>
-                            <th>Tamanhos</th>
-                            <th>Unitário</th>
-                            <th>Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        ';
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 36%;">Produto</th>
+            <th style="width: 8%;">Qtd.</th>
+            <th style="width: 32%;">Tamanhos</th>
+            <th style="width: 12%;">Unitário</th>
+            <th style="width: 12%;">Total</th>
+          </tr>
+        </thead>
+        <tbody>';
 
         foreach ($data->itens as $item) {
-            $quantidade = $this->sumQuantidades($item);
-            $valorUnitario = $quantidade > 0 ? ((float)($item->total_item ?? 0) / $quantidade) : 0;
-            $tamanhos = $this->getSizeText($item);
+            $quantity = $this->sumQuantidades($item);
+            $unitPrice = $quantity > 0 ? ((float)($item->total_item ?? 0) / $quantity) : 0;
 
             $html .= '
-                        <tr>
-                            <td>' . $this->h($this->safeText($item->produto ?? '-')) . '<br><small>' . $this->h($this->safeText($item->referencia ?? '-')) . '</small></td>
-                            <td>' . $quantidade . '</td>
-                            <td>' . $this->h($tamanhos) . '</td>
-                            <td>' . $this->h($this->formatCurrency($valorUnitario)) . '</td>
-                            <td>' . $this->h($this->formatCurrency((float)($item->total_item ?? 0))) . '</td>
-                        </tr>
-            ';
+          <tr>
+            <td>
+              <div class="product-name">' . $this->h($this->safeText($item->produto ?? '-')) . '</div>
+              <div class="product-reference">' . $this->h($this->safeText($item->referencia ?? '-')) . '</div>
+            </td>
+            <td>' . $quantity . '</td>
+            <td>' . $this->h($this->getSizeText($item)) . '</td>
+            <td>' . $this->h($this->formatCurrency($unitPrice)) . '</td>
+            <td>' . $this->h($this->formatCurrency((float)($item->total_item ?? 0))) . '</td>
+          </tr>';
         }
 
         $html .= '
-                    </tbody>
-                </table>
+        </tbody>
+      </table>
 
-                <div class="total-row">
-                    Total do Pedido: ' . $this->h($this->formatCurrency((float)($data->pedido->total_pedido ?? 0))) . '
-                </div>
-            </section>
-        ';
+      <div class="total-row">
+        Total do Pedido: ' . $this->h($this->formatCurrency((float)($data->pedido->total_pedido ?? 0))) . '
+      </div>
+    </section>';
 
         return $html;
     }
 
     private function getPaymentInfo(PrintData $data): string
     {
+        $discount = (float)($data->pedido->ped_desconto ?? 0);
+        $total = (float)($data->pedido->total_pedido ?? 0);
+        $subtotalHtml = $discount > 0
+            ? '<strong>Subtotal:</strong> ' . $this->h($this->formatCurrency($total + $discount)) . '<br />'
+            : '';
+        $discountHtml = $discount > 0
+            ? '<strong>Desconto:</strong> ' . $this->h($this->formatCurrency($discount)) . '<br />'
+            : '';
+
         return '
-            <section class="section">
-                <div class="section-title">Resumo e Pagamento</div>
-                <div class="box grid-2">
-                    <div>
-                        <strong>Status:</strong> ' . $this->h($this->getStatusText((int)($data->pedido->status ?? 0))) . '<br>
-                        <strong>Total:</strong> ' . $this->h($this->formatCurrency((float)($data->pedido->total_pedido ?? 0))) . '
-                    </div>
-                    <div>
-                        <strong>Forma de Pagamento:</strong> ' . $this->h($this->safeText($data->pedido->forma_pag ?? '-')) . '
-                    </div>
-                </div>
-            </section>
-        ';
+    <section class="section">
+      <div class="section-title">Resumo e Pagamento</div>
+
+      <div class="box payment">
+        <div>
+          <strong>Status:</strong> ' . $this->h($this->getStatusText((int)($data->pedido->status ?? 0))) . '<br />
+          ' . $discountHtml . '
+          <strong>Total:</strong> ' . $this->h($this->formatCurrency($total)) . '
+        </div>
+
+        <div>
+          <strong>Forma de Pagamento:</strong> ' . $this->h($this->safeText($data->pedido->forma_pag ?? '-')) . '<br />
+          ' . $subtotalHtml . '
+        </div>
+      </div>
+    </section>';
     }
 
     private function getAdditionalInfo(PrintData $data): string
@@ -315,29 +382,27 @@ class PedidoTemplate extends BaseTemplate
         }
 
         $html = '
-            <section class="section">
-                <div class="section-title">Informações Adicionais</div>
-        ';
+    <section class="section">
+      <div class="section-title">Informações Adicionais</div>';
 
         if ($obsPedido !== '') {
             $html .= '
-                <div class="box note-box">
-                    <strong>Observações do Pedido</strong><br>
-                    ' . nl2br($this->h($obsPedido)) . '
-                </div>
-            ';
+      <div class="box note-box">
+        <strong>Observações do Pedido</strong><br />
+        ' . nl2br($this->h($obsPedido)) . '
+      </div>';
         }
 
         if ($obsEntrega !== '') {
             $html .= '
-                <div class="box note-box">
-                    <strong>Observações de Entrega</strong><br>
-                    ' . nl2br($this->h($obsEntrega)) . '
-                </div>
-            ';
+      <div class="box note-box">
+        <strong>Observações de Entrega</strong><br />
+        ' . nl2br($this->h($obsEntrega)) . '
+      </div>';
         }
 
-        $html .= '</section>';
+        $html .= '
+    </section>';
 
         return $html;
     }
@@ -345,32 +410,30 @@ class PedidoTemplate extends BaseTemplate
     private function getSignatures(PrintData $data): string
     {
         return '
-            <section class="section">
-                <div class="section-title">Assinaturas</div>
+    <section class="section">
+      <div class="section-title">Assinaturas</div>
 
-                <div class="signatures">
-                    <div class="signature">
-                        Cliente
-                        <span>' . $this->h($this->clientName($data)) . '</span>
-                    </div>
+      <div class="signatures">
+        <div class="signature">
+          Cliente
+          <span>' . $this->h($this->clientName($data)) . '</span>
+        </div>
 
-                    <div class="signature">
-                        Sistema Lizzie
-                        <span>Representante Autorizado</span>
-                    </div>
-                </div>
-            </section>
-        ';
+        <div class="signature">
+          Sistema Lizzie
+          <span>Representante Autorizado</span>
+        </div>
+      </div>
+    </section>';
     }
 
     private function getFooter(PrintData $data): string
     {
         return '
-            <footer class="footer">
-                Documento gerado em ' . $this->h($this->formatDateTime($data->generatedAt)) . '<br>
-                Sistema Lizzie — Gestão Empresarial. Documento gerado automaticamente.
-            </footer>
-        ';
+    <footer class="footer">
+      Documento gerado em ' . $this->h($this->formatGeneratedAt($data->generatedAt)) . '<br />
+      Sistema Lizzie - Gestão Empresarial
+    </footer>';
     }
 
     private function isComplete(PrintOptions $options): bool
@@ -464,6 +527,11 @@ class PedidoTemplate extends BaseTemplate
         return date('d/m/Y', $timestamp);
     }
 
+    private function formatGeneratedAt(\DateTime $date): string
+    {
+        return $date->format('d/m/Y \à\s H:i');
+    }
+
     private function getStatusText(int $status): string
     {
         return match($status) {
@@ -496,7 +564,6 @@ class PedidoTemplate extends BaseTemplate
             ['key' => 'tam_g', 'label' => 'G'],
             ['key' => 'tam_u', 'label' => 'U'],
             ['key' => 'tam_rn', 'label' => 'RN'],
-            ['key' => 'lisa', 'label' => 'LISA'],
             ['key' => 'ida_1', 'label' => '1'],
             ['key' => 'ida_2', 'label' => '2'],
             ['key' => 'ida_3', 'label' => '3'],
@@ -505,15 +572,21 @@ class PedidoTemplate extends BaseTemplate
             ['key' => 'ida_8', 'label' => '8'],
             ['key' => 'ida_10', 'label' => '10'],
             ['key' => 'ida_12', 'label' => '12'],
+            ['key' => 'lisa', 'label' => 'Lisa'],
         ];
 
-        return array_map(
-            fn($size) => $size['label'] . ':' . intval($item->{$size['key']} ?? 0),
-            array_filter($sizes, fn($size) => intval($item->{$size['key']} ?? 0) > 0)
-        );
+        $badges = [];
+        foreach ($sizes as $size) {
+            $quantity = intval($item->{$size['key']} ?? 0);
+            if ($quantity > 0) {
+                $badges[] = $size['label'] . ':' . $quantity;
+            }
+        }
+
+        return $badges;
     }
 
-    private function formatCurrency(float $value): string
+    protected function formatCurrency(float $value): string
     {
         return 'R$ ' . number_format($value, 2, ',', '.');
     }

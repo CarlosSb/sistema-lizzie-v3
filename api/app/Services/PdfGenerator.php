@@ -9,6 +9,7 @@ use chillerlan\QRCode\Common\EccLevel;
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
 use Illuminate\Support\Facades\Storage;
+use Spatie\Browsershot\Browsershot;
 use Exception;
 
 class PdfGenerator
@@ -42,7 +43,7 @@ class PdfGenerator
         $template = new \App\Services\PedidoTemplate();
         $html = $template->render($data, $options);
 
-        return $this->renderPdf($html, $options);
+        return $this->renderWithBrowsershot($html, $options);
     }
 
     private function generateEtiqueta(PrintData $data, PrintOptions $options): string
@@ -151,6 +152,50 @@ class PdfGenerator
         $dompdf->render();
 
         return $dompdf->output();
+    }
+
+    private function renderWithBrowsershot(string $html, PrintOptions $options): string
+    {
+        $tempPath = storage_path('app/browser-pdf-temp');
+        if (!is_dir($tempPath)) {
+            mkdir($tempPath, 0775, true);
+        }
+
+        $browser = Browsershot::html($html)
+            ->format(strtoupper($options->paperSize))
+            ->showBackground()
+            ->margins(10, 10, 12, 10)
+            ->setCustomTempPath($tempPath)
+            ->waitUntilNetworkIdle(false)
+            ->timeout((int) env('BROWSERSHOT_TIMEOUT', 60));
+
+        if ($options->orientation === 'landscape') {
+            $browser->landscape();
+        }
+
+        $chromePath = (string) env('BROWSERSHOT_CHROME_PATH', '/usr/bin/google-chrome');
+        if ($chromePath !== '' && is_file($chromePath)) {
+            $browser->setChromePath($chromePath);
+        }
+
+        $nodeBinary = (string) env('BROWSERSHOT_NODE_BINARY', '');
+        if ($nodeBinary !== '') {
+            $browser->setNodeBinary($nodeBinary);
+        }
+
+        $nodeModulePath = (string) env('BROWSERSHOT_NODE_MODULE_PATH', base_path('../node_modules'));
+        if ($nodeModulePath !== '' && $nodeModulePath[0] !== '/') {
+            $nodeModulePath = base_path($nodeModulePath);
+        }
+        if ($nodeModulePath !== '' && is_dir($nodeModulePath)) {
+            $browser->setNodeModulePath($nodeModulePath);
+        }
+
+        if ((bool) env('BROWSERSHOT_NO_SANDBOX', true)) {
+            $browser->noSandbox();
+        }
+
+        return $browser->pdf();
     }
 
     public function generateQRCode(string $data, int $size = 100): string
